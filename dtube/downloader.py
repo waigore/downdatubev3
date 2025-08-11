@@ -93,7 +93,12 @@ def download_video(url: str, output_path: str = "downloads",
     Args:
         url: YouTube video URL
         output_path: Directory to save the downloaded video
-        quality: Video quality preference (best, worst, 720p, 480p, etc.)
+        quality: Video quality preference that controls the height parameter:
+                - "best" (default): 720p height
+                - "worst": 144p height  
+                - "720p", "480p", "360p": Specific height in pixels
+                - "720", "480", "360": Direct height values
+                - Any other value: Defaults to 720p height
     
     Returns:
         str: YouTube video ID
@@ -111,8 +116,20 @@ def download_video(url: str, output_path: str = "downloads",
     os.makedirs(output_path, exist_ok=True)
     
     # Configure yt-dlp options
+    # Parse quality parameter to determine height
+    if quality.isdigit():
+        height = quality
+    elif quality == "best":
+        height = "720"
+    elif quality == "worst":
+        height = "144"
+    elif quality.endswith("p"):
+        height = quality[:-1]  # Remove 'p' from "720p", "480p", etc.
+    else:
+        height = "720"  # Default height
+    
     ydl_opts = {
-        'format': f'best[height<={quality}]' if quality.isdigit() else quality,
+        'format': f'bestvideo[height={height}]+bestaudio/bestvideo+bestaudio',
         'outtmpl': os.path.join(output_path, f'{video_id}.%(ext)s'),
         'progress_hooks': [lambda d: _progress_hook(d, video_id)],
         'noplaylist': True,

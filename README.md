@@ -51,7 +51,12 @@ Downloads a video from YouTube and returns the video ID.
 **Parameters:**
 - `url` (str): YouTube video URL
 - `output_path` (str): Directory to save the downloaded video (default: "downloads")
-- `quality` (str): Video quality preference (default: "best")
+- `quality` (str): Video quality preference that controls the height parameter:
+  - "best" (default): 720p height
+  - "worst": 144p height  
+  - "720p", "480p", "360p": Specific height in pixels
+  - "720", "480", "360": Direct height values
+  - Any other value: Defaults to 720p height
 
 **Returns:**
 - `str`: YouTube video ID
@@ -152,7 +157,7 @@ from dtube import download_video
 video_id = download_video(
     "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
     output_path="videos",
-    quality="480p"
+    quality="480p"  # Will download 480p height video
 )
 ```
 
@@ -241,9 +246,14 @@ The module supports various YouTube URL formats:
 
 Quality can be specified as:
 
-- **Preset values**: `"best"`, `"worst"`
+- **Preset values**: 
+  - `"best"` (default): 720p height
+  - `"worst"`: 144p height
 - **Resolution**: `"720p"`, `"480p"`, `"360p"`, etc.
-- **Format codes**: `"137"`, `"136"`, etc.
+- **Direct height**: `"720"`, `"480"`, `"360"`, etc.
+- **Any other value**: Defaults to 720p height
+
+The quality parameter controls the `height` value in the format string `bestvideo[height=X]+bestaudio/bestvideo+bestaudio`, ensuring consistent video quality while maintaining the best available audio.
 
 ## Error Handling
 
