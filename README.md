@@ -23,6 +23,18 @@ pipenv install
 
 # Or install yt-dlp directly
 pip install yt-dlp
+
+# Install ffmpeg (required for video/audio merging)
+# Ubuntu/Debian:
+sudo apt update && sudo apt install ffmpeg
+
+# macOS (using Homebrew):
+brew install ffmpeg
+
+# Windows (using Chocolatey):
+choco install ffmpeg
+
+# Or download from: https://ffmpeg.org/download.html
 ```
 
 ## Quick Start
@@ -296,6 +308,7 @@ Pipfile                 # Dependencies
 
 - Python 3.10+
 - yt-dlp library
+- ffmpeg (for merging video and audio streams)
 - threading support (built-in)
 
 ## License
