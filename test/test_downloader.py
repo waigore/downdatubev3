@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for dtube module.
-
-This script tests the basic functionality including file existence verification.
+Tests for dtube.downloader module.
 """
 
 import sys
@@ -11,33 +9,13 @@ import time
 import tempfile
 import shutil
 
-# Add the current directory to Python path for testing
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-def test_imports():
-    """Test that all modules can be imported correctly."""
-    print("Testing imports...")
-    
-    try:
-        from dtube import download_video, pause_download, resume_download
-        print("✓ Core functions imported successfully")
-    except ImportError as e:
-        print(f"✗ Failed to import core functions: {e}")
-        return False
-    
-    try:
-        from dtube.utils import get_download_status, list_active_downloads
-        print("✓ Utility functions imported successfully")
-    except ImportError as e:
-        print(f"✗ Failed to import utility functions: {e}")
-        return False
-    
-    return True
+# Add the parent directory to Python path for testing
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def test_video_id_extraction():
     """Test video ID extraction functionality."""
-    print("\nTesting video ID extraction...")
+    print("Testing video ID extraction...")
     
     try:
         from dtube.downloader import extract_video_id
@@ -66,7 +44,7 @@ def test_video_id_extraction():
 
 def test_download_manager():
     """Test the download manager functionality."""
-    print("\nTesting download manager...")
+    print("Testing download manager...")
     
     try:
         from dtube.downloader import DownloadManager
@@ -118,7 +96,7 @@ def test_download_manager():
 
 def test_file_existence():
     """Test that downloaded videos actually exist in the output path."""
-    print("\nTesting file existence after download...")
+    print("Testing file existence after download...")
     
     try:
         from dtube import download_video
@@ -207,12 +185,11 @@ def test_file_existence():
         return False
 
 
-def main():
-    """Run all tests."""
-    print("=== dtube Module Tests ===\n")
+def run_downloader_tests():
+    """Run all downloader tests."""
+    print("=== dtube.downloader Module Tests ===\n")
     
     tests = [
-        test_imports,
         test_video_id_extraction,
         test_download_manager,
         test_file_existence,
@@ -226,16 +203,17 @@ def main():
             passed += 1
         print()
     
-    print(f"=== Test Results ===")
+    print(f"=== Downloader Test Results ===")
     print(f"Passed: {passed}/{total}")
     
     if passed == total:
-        print("🎉 All tests passed! The dtube module is working correctly.")
-        return 0
+        print("🎉 All downloader tests passed!")
+        return True
     else:
-        print("❌ Some tests failed. Please check the errors above.")
-        return 1
+        print("❌ Some downloader tests failed.")
+        return False
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    success = run_downloader_tests()
+    sys.exit(0 if success else 1)
