@@ -148,10 +148,10 @@ def test_file_existence():
             files_in_dir = os.listdir(test_output_dir)
             print(f"📋 Files found: {files_in_dir}")
             
-            # Look for a file that starts with the video ID
+            # Look for a file that contains the video ID (new format: title_videoID.ext)
             downloaded_file = None
             for filename in files_in_dir:
-                if filename.startswith(video_id):
+                if video_id in filename:
                     downloaded_file = filename
                     break
             
@@ -163,12 +163,19 @@ def test_file_existence():
                 # Verify file is not empty (should be at least a few KB)
                 if file_size > 1024:
                     print("✅ File size is reasonable")
+                    
+                    # Check if the file follows the new naming convention
+                    if '_' in downloaded_file and video_id in downloaded_file:
+                        print("✅ File follows the new title_videoID naming convention")
+                    else:
+                        print("⚠️  File doesn't follow the expected naming convention")
+                    
                     return True
                 else:
                     print("❌ File is too small - download may have failed")
                     return False
             else:
-                print("❌ No file found with expected video ID prefix")
+                print("❌ No file found containing the video ID")
                 return False
                 
         finally:

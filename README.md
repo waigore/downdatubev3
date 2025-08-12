@@ -7,6 +7,7 @@ A Python module for downloading YouTube videos with pause/resume functionality u
 ## Features
 
 - **Download videos** from YouTube URLs
+- **Smart filename generation** with video title and ID (e.g., `Title_VideoID.ext`)
 - **Pause downloads** at any time
 - **Resume paused downloads**
 - **Progress tracking** for active downloads
@@ -51,6 +52,23 @@ pause_download(video_id)
 # Resume the download
 resume_download(video_id)
 ```
+
+## Filename Format
+
+The module automatically generates descriptive filenames for downloaded videos:
+
+**Format**: `[Video Title]_[Video ID].[extension]`
+
+**Examples**:
+- `Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)_dQw4w9WgXcQ.mp4`
+- `Python Tutorial for Beginners_video123.webm`
+
+**Features**:
+- **Automatic title extraction** from YouTube metadata
+- **Filesystem-safe names** with special characters replaced
+- **Length limiting** to prevent extremely long filenames
+- **Fallback format** uses video ID only if title extraction fails
+- **Unique identification** with video ID to prevent conflicts
 
 ## API Reference
 
@@ -297,11 +315,20 @@ All download management operations are thread-safe, allowing you to:
 dtube/
 ├── __init__.py          # Main module interface
 ├── downloader.py        # Core download functionality
+├── driver.py            # Download driver for multiple concurrent downloads
 └── utils.py            # Utility functions
 
+test/                    # Comprehensive test suite
+├── test_downloader.py   # Core functionality tests
+├── test_driver.py       # Driver functionality tests
+├── test_title_extraction.py # Title extraction tests
+├── test_download_filename.py # Filename format tests
+└── run_all_tests.py     # Test runner
+
 example.py               # Usage examples
-README.md               # This documentation
-Pipfile                 # Dependencies
+dl.py                    # Command-line interface
+README.md                # This documentation
+Pipfile                  # Dependencies
 ```
 
 ## Requirements
@@ -310,6 +337,28 @@ Pipfile                 # Dependencies
 - yt-dlp library
 - ffmpeg (for merging video and audio streams)
 - threading support (built-in)
+
+## Testing
+
+The module includes a comprehensive test suite:
+
+```bash
+# Run all tests
+pipenv run python test/run_all_tests.py
+
+# Run specific test modules
+pipenv run python test/test_downloader.py
+pipenv run python test/test_driver.py
+pipenv run python test/test_title_extraction.py
+pipenv run python test/test_download_filename.py
+```
+
+**Test Coverage**:
+- Core download functionality
+- Title extraction and filename generation
+- Download driver and concurrency
+- Error handling and edge cases
+- All tests run under pipenv shell
 
 ## License
 

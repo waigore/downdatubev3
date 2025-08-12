@@ -52,7 +52,16 @@ class DownloadDriver:
             self.logger.info(f"Starting download: {url}")
             video_id = download_video(url, self.output_path, self.quality)
             self.logger.info(f"✓ Download started for video ID: {video_id}")
-            self.logger.debug(f"🔍 Expected filename pattern: {video_id}.*")
+            
+            # Get the expected filename pattern from the download info
+            from .downloader import _download_manager
+            download_info = _download_manager.get_download(video_id)
+            if download_info and download_info.get('title'):
+                expected_pattern = f"{download_info['title']}_{video_id}.*"
+            else:
+                expected_pattern = f"{video_id}.*"
+            self.logger.debug(f"🔍 Expected filename pattern: {expected_pattern}")
+            
             return video_id
         except Exception as e:
             self.logger.error(f"✗ Failed to start download for {url}: {e}")
@@ -166,6 +175,7 @@ class DownloadDriver:
             all_files = os.listdir(self.output_path)
             self.logger.debug(f"🔍 {video_id}: All files in directory: {all_files}")
             
+            # Look for files that contain the video_id (either as title_video_id.ext or just video_id.ext)
             for filename in all_files:
                 if video_id in filename:
                     file_path = os.path.join(self.output_path, filename)

@@ -132,6 +132,9 @@ def download_video(url: str, output_path: str = "downloads",
     # Create output directory
     os.makedirs(output_path, exist_ok=True)
     
+    # Extract video metadata to get the title
+    video_title = _extract_video_title(url)
+    
     # Configure yt-dlp options
     # Parse quality parameter to determine height
     if quality.isdigit():
@@ -145,9 +148,12 @@ def download_video(url: str, output_path: str = "downloads",
     else:
         height = "720"  # Default height
     
+    # Create filename template with title and video ID
+    filename_template = _create_filename_template(video_title, video_id)
+    
     ydl_opts = {
         'format': f'bestvideo[height={height}]+bestaudio/bestvideo+bestaudio',
-        'outtmpl': os.path.join(output_path, f'{video_id}.%(ext)s'),
+        'outtmpl': os.path.join(output_path, filename_template),
         'progress_hooks': [lambda d: _progress_hook(d, video_id)],
         'noplaylist': True,
         'ignoreerrors': False,
@@ -160,7 +166,8 @@ def download_video(url: str, output_path: str = "downloads",
             'url': url,
             'output_path': output_path,
             'quality': quality,
-            'ydl_opts': ydl_opts
+            'ydl_opts': ydl_opts,
+            'title': video_title
         })
         
         # Start download in a separate thread
@@ -245,3 +252,87 @@ def _download_worker(video_id: str, ydl_opts: Dict[str, Any]):
         # Keep the download in manager for error inspection
         time.sleep(5)  # Wait before cleanup
         _download_manager.remove_download(video_id)
+
+
+def _extract_video_title(url: str) -> str:
+    """
+    Extract video title from YouTube URL using yt-dlp.
+    
+    Args:
+        url: YouTube video URL
+        
+    Returns:
+        str: Video title, or empty string if extraction fails
+    """
+    try:
+        # Use yt-dlp to extract video info without downloading
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            title = info.get('title', '')
+            
+            # Clean the title for filesystem compatibility
+            cleaned_title = _clean_title_for_filename(title)
+            return cleaned_title
+            
+    except Exception as e:
+        logging.warning(f"Failed to extract video title: {e}")
+        return ""
+
+
+def _clean_title_for_filename(title: str) -> str:
+    """
+    Clean video title to make it safe for use in filenames.
+    
+    Args:
+        title: Raw video title
+        
+    Returns:
+        str: Cleaned title safe for filenames
+    """
+    if not title:
+        return ""
+    
+    # Remove or replace characters that are problematic in filenames
+    import re
+    
+    # Replace problematic characters with underscores or remove them
+    cleaned = re.sub(r'[<>:"/\\|?*]', '_', title)
+    
+    # Remove leading/trailing spaces and dots
+    cleaned = cleaned.strip(' .')
+    
+    # Limit length to avoid extremely long filenames
+    max_length = 100
+    if len(cleaned) > max_length:
+        cleaned = cleaned[:max_length].rstrip(' .')
+    
+    # Ensure it's not empty after cleaning
+    if not cleaned:
+        cleaned = "untitled"
+    
+    return cleaned
+
+
+def _create_filename_template(title: str, video_id: str) -> str:
+    """
+    Create filename template with title and video ID.
+    
+    Args:
+        title: Cleaned video title
+        video_id: YouTube video ID
+        
+    Returns:
+        str: Filename template for yt-dlp
+    """
+    if title:
+        # Use title + video ID format
+        return f'{title}_{video_id}.%(ext)s'
+    else:
+        # Fallback to just video ID if title extraction failed
+        return f'{video_id}.%(ext)s'
