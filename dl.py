@@ -232,7 +232,7 @@ class DownloadDriver:
                     self.logger.warning(f"   • {video_id}")
                 break
                 
-            self.logger.info(f"⏳ Waiting for {len(self.active_downloads)} active downloads to complete... (elapsed: {elapsed/60:.1f}m)")
+            self.logger.debug(f"⏳ Waiting for {len(self.active_downloads)} active downloads to complete... (elapsed: {elapsed/60:.1f}m)")
             time.sleep(5)  # Check every 5 seconds
             
             # Check if any downloads have completed
@@ -277,16 +277,16 @@ class DownloadDriver:
             self.logger.debug(f"🔧 Started worker thread {worker.name}")
             
         # Wait for all downloads to complete
-        self.logger.info("⏳ Waiting for download queue to empty...")
+        self.logger.debug("⏳ Waiting for download queue to empty...")
         self.download_queue.join()
-        self.logger.info("✅ Download queue is empty")
+        self.logger.debug("✅ Download queue is empty")
         
         # Wait for all active downloads to actually complete
-        self.logger.info("⏳ Waiting for all active downloads to complete...")
+        self.logger.debug("⏳ Waiting for all active downloads to complete...")
         self.wait_for_all_downloads(timeout_minutes=self.wait_timeout)
         
         # Wait for workers to finish
-        self.logger.info("🔧 Waiting for worker threads to finish...")
+        self.logger.debug("🔧 Waiting for worker threads to finish...")
         for worker in workers:
             worker.join(timeout=5)
             self.logger.debug(f"🔧 Worker thread {worker.name} finished")
@@ -322,13 +322,13 @@ class DownloadDriver:
         if os.path.exists(self.output_path):
             actual_files = [f for f in os.listdir(self.output_path) if os.path.isfile(os.path.join(self.output_path, f))]
             if actual_files:
-                self.logger.info(f"\n📁 Files in output directory ({len(actual_files)}):")
+                self.logger.debug(f"\n📁 Files in output directory ({len(actual_files)}):")
                 for filename in actual_files:
                     file_path = os.path.join(self.output_path, filename)
                     size = os.path.getsize(file_path)
-                    self.logger.info(f"   • {filename} ({size} bytes)")
+                    self.logger.debug(f"   • {filename} ({size} bytes)")
             else:
-                self.logger.info("\n📁 Output directory is empty")
+                self.logger.debug("\n📁 Output directory is empty")
         else:
             self.logger.warning("\n📁 Output directory does not exist")
                 
