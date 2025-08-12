@@ -5,10 +5,27 @@ Core downloader functionality for dtube module.
 import os
 import threading
 import time
+import logging
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse, parse_qs
 import yt_dlp
 from yt_dlp.utils import DownloadError
+
+
+class DownloadFilter(logging.Filter):
+    """Filter to suppress [download] prefixed messages from yt-dlp."""
+    
+    def filter(self, record):
+        # Suppress messages that start with [download]
+        if record.getMessage().startswith('[download]'):
+            return False
+        return True
+
+
+# Create a custom logger for yt-dlp
+_ytdlp_logger = logging.getLogger('yt_dlp')
+_ytdlp_logger.setLevel(logging.INFO)
+_ytdlp_logger.addFilter(DownloadFilter())
 
 
 class DownloadManager:
@@ -134,6 +151,7 @@ def download_video(url: str, output_path: str = "downloads",
         'progress_hooks': [lambda d: _progress_hook(d, video_id)],
         'noplaylist': True,
         'ignoreerrors': False,
+        'logger': _ytdlp_logger,
     }
     
     try:
