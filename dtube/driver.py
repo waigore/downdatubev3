@@ -67,6 +67,23 @@ class DownloadDriver:
             self.logger.error(f"✗ Failed to start download for {url}: {e}")
             return None
             
+    def get_concurrency_status(self) -> Dict[str, int]:
+        """Get current concurrency status."""
+        with self.lock:
+            return {
+                'active_downloads': len(self.active_downloads),
+                'max_concurrent': self.max_concurrent,
+                'queue_size': self.download_queue.qsize(),
+                'completed': len(self.completed_downloads),
+                'failed': len(self.failed_downloads)
+            }
+    
+    def log_concurrency_status(self):
+        """Log current concurrency status."""
+        status = self.get_concurrency_status()
+        self.logger.debug(f"📊 Concurrency Status: {status['active_downloads']}/{status['max_concurrent']} active, "
+                         f"{status['queue_size']} queued, {status['completed']} completed, {status['failed']} failed")
+
     def monitor_download(self, video_id: str, url: str):
         """Monitor a download until completion."""
         self.logger.debug(f"🔍 {video_id}: Starting download monitoring for URL: {url}")
@@ -83,6 +100,10 @@ class DownloadDriver:
                 
                 if self.verify_download_exists(video_id):
                     self.logger.info(f"✅ {video_id}: Download completed successfully (file found)")
+                    # Clean up any .part files for this video
+                    part_files_removed = self.cleanup_part_files_for_video(video_id)
+                    if part_files_removed > 0:
+                        self.logger.info(f"🧹 {video_id}: Auto-cleaned up {part_files_removed} .part file(s)")
                     with self.lock:
                         self.completed_downloads.append(video_id)
                 else:
@@ -105,6 +126,10 @@ class DownloadDriver:
                 break
             elif status['status'] == 'completed':
                 self.logger.info(f"✅ {video_id}: Download completed successfully")
+                # Clean up any .part files for this video
+                part_files_removed = self.cleanup_part_files_for_video(video_id)
+                if part_files_removed > 0:
+                    self.logger.info(f"🧹 {video_id}: Auto-cleaned up {part_files_removed} .part file(s)")
                 with self.lock:
                     self.completed_downloads.append(video_id)
                 break
@@ -113,12 +138,18 @@ class DownloadDriver:
                 
             self.logger.debug(f"🔍 {video_id}: Current status: {status}")
             
+            # Log concurrency status periodically
+            if int(elapsed) % 10 == 0:  # Every 10 seconds
+                self.log_concurrency_status()
+            
             time.sleep(2)  # Update every 2 seconds
             
         # Remove from active downloads
         with self.lock:
             if video_id in self.active_downloads:
                 del self.active_downloads[video_id]
+                self.logger.debug(f"🔍 {video_id}: Removed from active downloads. "
+                                f"Current active: {len(self.active_downloads)}/{self.max_concurrent}")
                 
     def download_worker(self):
         """Worker thread that processes downloads from the queue."""
@@ -129,27 +160,30 @@ class DownloadDriver:
                 url = self.download_queue.get(timeout=1)
                 self.logger.debug(f"🔧 Worker {threading.current_thread().name}: Processing URL: {url}")
                 
-                # Check if we can start a new download
-                while len(self.active_downloads) >= self.max_concurrent:
-                    time.sleep(1)
-                    
-                # Start the download
-                video_id = self.start_download(url)
-                if video_id:
+                # Wait until we can start a new download (respect max_concurrent limit)
+                # Use a single lock acquisition to make the check and start atomic
+                while True:
                     with self.lock:
-                        self.active_downloads[video_id] = {
-                            'url': url,
-                            'start_time': time.time()
-                        }
-                    
-                    # Start monitoring in a separate thread
-                    monitor_thread = threading.Thread(
-                        target=self.monitor_download,
-                        args=(video_id, url),
-                        daemon=True
-                    )
-                    monitor_thread.start()
-                    
+                        if len(self.active_downloads) < self.max_concurrent:
+                            # We can start a download, so start it immediately while holding the lock
+                            video_id = self.start_download(url)
+                            if video_id:
+                                self.active_downloads[video_id] = {
+                                    'url': url,
+                                    'start_time': time.time()
+                                }
+                                
+                                # Start monitoring in a separate thread
+                                monitor_thread = threading.Thread(
+                                    target=self.monitor_download,
+                                    args=(video_id, url),
+                                    daemon=True
+                                )
+                                monitor_thread.start()
+                            break
+                    # If we couldn't start a download, wait a bit before checking again
+                    time.sleep(0.1)
+                
                 self.download_queue.task_done()
                 
             except Empty:
@@ -176,8 +210,13 @@ class DownloadDriver:
             self.logger.debug(f"🔍 {video_id}: All files in directory: {all_files}")
             
             # Look for files that contain the video_id (either as title_video_id.ext or just video_id.ext)
+            # Exclude .part files as they indicate incomplete downloads
             for filename in all_files:
                 if video_id in filename:
+                    if filename.endswith('.part'):
+                        self.logger.debug(f"🔍 {video_id}: Found .part file {filename} - excluding from completion check")
+                        continue
+                    
                     file_path = os.path.join(self.output_path, filename)
                     if os.path.isfile(file_path) and os.path.getsize(file_path) > 0:
                         file_ext = os.path.splitext(filename)[1]
@@ -193,6 +232,65 @@ class DownloadDriver:
         self.logger.debug(f"🔍 {video_id}: No file containing '{video_id}' found in {self.output_path} after {retry_count} attempts")
         return False
 
+    def cleanup_part_files(self) -> int:
+        """
+        Clean up any .part files in the output directory that indicate incomplete downloads.
+        
+        Returns:
+            int: Number of .part files removed
+        """
+        if not os.path.exists(self.output_path):
+            return 0
+        
+        removed_count = 0
+        all_files = os.listdir(self.output_path)
+        
+        for filename in all_files:
+            if filename.endswith('.part'):
+                file_path = os.path.join(self.output_path, filename)
+                try:
+                    os.remove(file_path)
+                    self.logger.info(f"🧹 Cleaned up incomplete download: {filename}")
+                    removed_count += 1
+                except OSError as e:
+                    self.logger.warning(f"⚠️  Failed to remove .part file {filename}: {e}")
+        
+        if removed_count > 0:
+            self.logger.info(f"🧹 Cleaned up {removed_count} incomplete download(s)")
+        
+        return removed_count
+
+    def cleanup_part_files_for_video(self, video_id: str) -> int:
+        """
+        Clean up .part files for a specific video ID.
+        
+        Args:
+            video_id: YouTube video ID to clean up .part files for
+            
+        Returns:
+            int: Number of .part files removed for this video
+        """
+        if not os.path.exists(self.output_path):
+            return 0
+        
+        removed_count = 0
+        all_files = os.listdir(self.output_path)
+        
+        for filename in all_files:
+            if filename.endswith('.part') and video_id in filename:
+                file_path = os.path.join(self.output_path, filename)
+                try:
+                    os.remove(file_path)
+                    self.logger.debug(f"🧹 {video_id}: Cleaned up .part file: {filename}")
+                    removed_count += 1
+                except OSError as e:
+                    self.logger.warning(f"⚠️  {video_id}: Failed to remove .part file {filename}: {e}")
+        
+        if removed_count > 0:
+            self.logger.info(f"🧹 {video_id}: Cleaned up {removed_count} .part file(s)")
+        
+        return removed_count
+
     def wait_for_all_downloads(self, timeout_minutes: int = 60):
         """Wait for all active downloads to complete."""
         start_time = time.time()
@@ -207,6 +305,10 @@ class DownloadDriver:
                     self.logger.warning(f"   • {video_id}")
                 break
                 
+            # Log concurrency status every 30 seconds
+            if int(elapsed) % 30 == 0:
+                self.log_concurrency_status()
+            
             self.logger.debug(f"⏳ Waiting for {len(self.active_downloads)} active downloads to complete... (elapsed: {elapsed/60:.1f}m)")
             time.sleep(5)  # Check every 5 seconds
             
@@ -228,6 +330,8 @@ class DownloadDriver:
                     # Only add to completed_downloads if not already there
                     if video_id not in self.completed_downloads:
                         self.completed_downloads.append(video_id)
+                    self.logger.debug(f"✅ {video_id}: Download completed and removed from active. "
+                                    f"Current active: {len(self.active_downloads)}/{self.max_concurrent}")
         
         if not self.active_downloads:
             self.logger.info("✅ All downloads completed!")
@@ -243,10 +347,10 @@ class DownloadDriver:
         self.logger.info("-" * 60)
         
         # Start worker threads
-        self.logger.info("🔧 Starting download worker threads...")
+        self.logger.info(f"🔧 Starting {self.max_concurrent} download worker threads...")
         workers = []
         for i in range(self.max_concurrent):
-            worker = threading.Thread(target=self.download_worker, daemon=True)
+            worker = threading.Thread(target=self.download_worker, daemon=True, name=f"Worker-{i+1}")
             worker.start()
             workers.append(worker)
             self.logger.debug(f"🔧 Started worker thread {worker.name}")
@@ -266,6 +370,11 @@ class DownloadDriver:
             worker.join(timeout=5)
             self.logger.debug(f"🔧 Worker thread {worker.name} finished")
             
+        # Final cleanup of any remaining .part files from current execution
+        final_part_files_removed = self.cleanup_part_files()
+        if final_part_files_removed > 0:
+            self.logger.info(f"🧹 Final cleanup: Removed {final_part_files_removed} remaining .part file(s)")
+        
         # Print final summary
         self.logger.info("📊 Generating download summary...")
         self.print_summary()

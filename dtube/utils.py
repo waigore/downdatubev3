@@ -66,3 +66,62 @@ def get_download_progress(video_id: str) -> Optional[float]:
     if download_info:
         return download_info.get('progress', 0.0)
     return None
+
+
+def check_for_part_files(output_path: str = "downloads") -> List[str]:
+    """
+    Check for .part files in the output directory that indicate incomplete downloads.
+    
+    Args:
+        output_path: Directory to check for .part files
+        
+    Returns:
+        List of .part filenames found
+    """
+    import os
+    
+    if not os.path.exists(output_path):
+        return []
+    
+    part_files = []
+    try:
+        all_files = os.listdir(output_path)
+        for filename in all_files:
+            if filename.endswith('.part'):
+                part_files.append(filename)
+    except OSError:
+        pass
+    
+    return part_files
+
+
+def cleanup_part_files(output_path: str = "downloads") -> int:
+    """
+    Clean up .part files in the output directory that indicate incomplete downloads.
+    
+    Args:
+        output_path: Directory to check and clean
+    
+    Returns:
+        int: Number of .part files removed
+    """
+    import os
+    
+    if not os.path.exists(output_path):
+        return 0
+    
+    removed_count = 0
+    try:
+        all_files = os.listdir(output_path)
+        for filename in all_files:
+            if filename.endswith('.part'):
+                file_path = os.path.join(output_path, filename)
+                try:
+                    os.remove(file_path)
+                    removed_count += 1
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    
+    return removed_count

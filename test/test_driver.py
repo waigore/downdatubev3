@@ -336,6 +336,97 @@ def test_download_driver_worker():
         return False
 
 
+def test_download_driver_concurrency_control():
+    """Test DownloadDriver concurrency control functionality."""
+    print("Testing DownloadDriver concurrency control...")
+    
+    try:
+        from dtube import DownloadDriver
+        
+        # Create a temporary directory for testing
+        test_dir = tempfile.mkdtemp(prefix="dtube_test_")
+        
+        try:
+            # Test with max_concurrent=2
+            driver = DownloadDriver(output_path=test_dir, max_concurrent=2)
+            
+            # Mock the download functions to simulate slow downloads
+            def mock_start_download(url):
+                # Simulate a download that takes time
+                time.sleep(0.1)
+                return f"video_{url.split('=')[-1]}"
+            
+            def mock_monitor_download(video_id, url):
+                # Simulate monitoring that takes time
+                time.sleep(0.2)
+                # Mark as completed
+                with driver.lock:
+                    if video_id in driver.active_downloads:
+                        del driver.active_downloads[video_id]
+                    driver.completed_downloads.append(video_id)
+            
+            with patch.object(driver, 'start_download', side_effect=mock_start_download), \
+                 patch.object(driver, 'monitor_download', side_effect=mock_monitor_download):
+                
+                # Add multiple test URLs to the queue
+                test_urls = [
+                    "https://youtube.com/watch?v=test1",
+                    "https://youtube.com/watch?v=test2",
+                    "https://youtube.com/watch?v=test3",
+                    "https://youtube.com/watch?v=test4"
+                ]
+                driver.add_urls(test_urls)
+                
+                # Start worker threads
+                workers = []
+                for i in range(driver.max_concurrent):
+                    worker = threading.Thread(
+                        target=driver.download_worker,
+                        daemon=True,
+                        name=f"TestWorker-{i+1}"
+                    )
+                    worker.start()
+                    workers.append(worker)
+                
+                # Wait for workers to process URLs
+                time.sleep(1)
+                
+                # Check that we never exceed max_concurrent active downloads
+                max_active = 0
+                for _ in range(10):  # Check multiple times
+                    current_active = len(driver.active_downloads)
+                    max_active = max(max_active, current_active)
+                    time.sleep(0.1)
+                
+                # Wait for all workers to finish
+                for worker in workers:
+                    worker.join(timeout=2)
+                
+                # Verify concurrency control
+                if max_active <= driver.max_concurrent:
+                    print(f"✓ Concurrency control works: max active downloads was {max_active}, limit was {driver.max_concurrent}")
+                else:
+                    print(f"✗ Concurrency control failed: max active downloads was {max_active}, limit was {driver.max_concurrent}")
+                    return False
+                
+                # Verify all downloads were processed
+                if len(driver.completed_downloads) == len(test_urls):
+                    print("✓ All downloads were processed")
+                else:
+                    print(f"✗ Not all downloads were processed: {len(driver.completed_downloads)}/{len(test_urls)}")
+                    return False
+                
+        finally:
+            # Clean up
+            shutil.rmtree(test_dir)
+        
+        return True
+        
+    except Exception as e:
+        print(f"✗ DownloadDriver concurrency control test failed: {e}")
+        return False
+
+
 def test_download_driver_timeout():
     """Test DownloadDriver timeout functionality."""
     print("Testing DownloadDriver timeout...")
@@ -392,6 +483,7 @@ def run_driver_tests():
         test_download_driver_file_verification,
         test_download_driver_monitoring,
         test_download_driver_worker,
+        test_download_driver_concurrency_control,
         test_download_driver_timeout,
     ]
     

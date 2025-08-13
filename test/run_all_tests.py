@@ -20,6 +20,7 @@ def run_all_tests():
         from test.test_driver import run_driver_tests
         from test.test_title_extraction import run_title_extraction_tests
         from test.test_download_filename import run_download_filename_tests
+        from test.test_dl_script import run_dl_script_tests
         
         # Run downloader tests
         print("Running downloader tests...")
@@ -41,9 +42,15 @@ def run_all_tests():
         download_filename_success = run_download_filename_tests()
         print()
         
+        # Run dl.py script tests
+        print("Running dl.py script tests...")
+        dl_script_success = run_dl_script_tests()
+        print()
+        
         # Overall results
         print("=== Overall Test Results ===")
-        if downloader_success and driver_success and title_extraction_success and download_filename_success:
+        if (downloader_success and driver_success and title_extraction_success and 
+            download_filename_success and dl_script_success):
             print("🎉 All tests passed! The dtube module is working correctly.")
             return True
         else:

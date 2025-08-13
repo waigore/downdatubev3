@@ -13,6 +13,10 @@ A Python module for downloading YouTube videos with pause/resume functionality u
 - **Progress tracking** for active downloads
 - **Thread-safe** download management
 - **Multiple quality options** support
+- **Concurrent downloads** with configurable limits
+- **Automatic cleanup** of incomplete download files (.part files)
+- **Command-line interface** for batch processing
+- **Resume interrupted downloads** (startup cleanup disabled by default)
 
 ## Installation
 
@@ -52,6 +56,61 @@ pause_download(video_id)
 # Resume the download
 resume_download(video_id)
 ```
+
+## Command-Line Interface
+
+The module includes a powerful command-line interface (`dl.py`) for batch downloading and managing multiple videos:
+
+### Basic Usage
+
+```bash
+# Download a single video
+python dl.py https://www.youtube.com/watch?v=dQw4w9WgXcQ
+
+# Download multiple videos with concurrency control
+python dl.py -c 5 -q 720p https://youtube.com/watch?v=VIDEO1 https://youtube.com/watch?v=VIDEO2
+
+# Batch download from a text file
+python dl.py -b urls.txt -c 3 -q 720p
+
+# Check for incomplete downloads
+python dl.py --check-parts
+```
+
+### Command-Line Options
+
+- `-c, --concurrent`: Maximum simultaneous downloads (default: 3)
+- `-o, --output`: Output directory for videos (default: downloads)
+- `-q, --quality`: Video quality preference (default: best)
+- `-t, --timeout`: Timeout in minutes for downloads (default: 60)
+- `-l, --log-level`: Set logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+- `-b, --batch`: Text file containing YouTube URLs, one per line
+- `--check-parts`: Check for incomplete downloads (.part files) and exit
+- `--version`: Show version information
+
+### Batch Mode
+
+Create a text file with one YouTube URL per line:
+
+```txt
+https://www.youtube.com/watch?v=VIDEO1
+https://www.youtube.com/watch?v=VIDEO2
+https://www.youtube.com/watch?v=VIDEO3
+```
+
+Then run:
+```bash
+python dl.py -b urls.txt -c 5 -q 720p
+```
+
+### Auto-Cleanup Features
+
+The command-line interface automatically handles incomplete downloads:
+
+- **Per-download cleanup**: Automatically removes `.part` files when each video completes
+- **Final cleanup**: Performs a final cleanup pass at the end of all downloads
+- **Resume support**: Startup cleanup is disabled by default to allow resuming interrupted downloads
+- **Manual inspection**: Use `--check-parts` to inspect incomplete downloads without starting new ones
 
 ## Filename Format
 
@@ -166,6 +225,76 @@ Cancel a download and remove it from the manager.
 **Returns:**
 - `bool`: True if download was cancelled, False if not found
 
+#### `check_for_part_files(output_path)`
+
+Check for incomplete download files (.part files) in the specified directory.
+
+**Parameters:**
+- `output_path` (str): Directory to check for .part files
+
+**Returns:**
+- `List[str]`: List of .part filenames found, empty list if none found
+
+**Example:**
+```python
+from dtube.utils import check_for_part_files
+
+# Check for incomplete downloads
+part_files = check_for_part_files("downloads")
+if part_files:
+    print(f"Found {len(part_files)} incomplete downloads")
+    for part_file in part_files:
+        print(f"  - {part_file}")
+```
+
+### Download Driver
+
+#### `DownloadDriver(max_concurrent=3, output_path="downloads", quality="best", logger=None)`
+
+A class for managing multiple concurrent YouTube downloads with automatic cleanup and progress monitoring.
+
+**Parameters:**
+- `max_concurrent` (int): Maximum number of simultaneous downloads (default: 3)
+- `output_path` (str): Directory to save downloaded videos (default: "downloads")
+- `quality` (str): Video quality preference (default: "best")
+- `logger` (logging.Logger): Logger instance for output (optional)
+
+**Key Methods:**
+- `add_url(url)`: Add a single URL to the download queue
+- `add_urls(urls)`: Add multiple URLs to the download queue
+- `run()`: Start the download driver and process all queued URLs
+- `cleanup_part_files()`: Clean up all `.part` files in the output directory
+- `cleanup_part_files_for_video(video_id)`: Clean up `.part` files for a specific video
+
+**Features:**
+- **Concurrent downloads**: Manages multiple downloads simultaneously
+- **Automatic cleanup**: Removes incomplete download files automatically
+- **Progress monitoring**: Tracks download progress and completion status
+- **Thread safety**: All operations are thread-safe
+- **Resume support**: Preserves interrupted downloads for resumption
+
+**Example:**
+```python
+from dtube import DownloadDriver
+
+# Create driver with 5 concurrent downloads
+driver = DownloadDriver(
+    max_concurrent=5,
+    output_path="videos",
+    quality="720p"
+)
+
+# Add URLs to download
+driver.add_urls([
+    "https://youtube.com/watch?v=VIDEO1",
+    "https://youtube.com/watch?v=VIDEO2",
+    "https://youtube.com/watch?v=VIDEO3"
+])
+
+# Start downloading
+driver.run()
+```
+
 ## Usage Examples
 
 ### Basic Download
@@ -263,6 +392,35 @@ active = list_active_downloads()
 print(f"Active downloads: {len(active)}")
 ```
 
+### Concurrent Downloads with Auto-Cleanup
+
+```python
+from dtube import DownloadDriver
+
+# Create driver for concurrent downloads
+driver = DownloadDriver(
+    max_concurrent=3,
+    output_path="videos",
+    quality="720p"
+)
+
+# Add multiple URLs
+driver.add_urls([
+    "https://youtube.com/watch?v=VIDEO1",
+    "https://youtube.com/watch?v=VIDEO2",
+    "https://youtube.com/watch?v=VIDEO3"
+])
+
+# Start downloading (auto-cleanup happens automatically)
+driver.run()
+
+# The driver automatically:
+# - Downloads videos concurrently
+# - Cleans up .part files when each video completes
+# - Performs final cleanup at the end
+# - Provides detailed progress logging
+```
+
 ## Supported URL Formats
 
 The module supports various YouTube URL formats:
@@ -326,7 +484,7 @@ test/                    # Comprehensive test suite
 └── run_all_tests.py     # Test runner
 
 example.py               # Usage examples
-dl.py                    # Command-line interface
+dl.py                    # Command-line interface with auto-cleanup
 README.md                # This documentation
 Pipfile                  # Dependencies
 ```
