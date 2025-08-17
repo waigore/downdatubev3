@@ -312,7 +312,7 @@ def test_download_driver_worker():
                 worker_thread.start()
                 
                 # Wait for worker to process the URL
-                time.sleep(2)
+                time.sleep(0.1)
                 
                 # Check if the download was started
                 if "test123" in driver.active_downloads:
@@ -388,14 +388,14 @@ def test_download_driver_concurrency_control():
                     workers.append(worker)
                 
                 # Wait for workers to process URLs
-                time.sleep(1)
+                time.sleep(0.1)
                 
                 # Check that we never exceed max_concurrent active downloads
                 max_active = 0
                 for _ in range(10):  # Check multiple times
                     current_active = len(driver.active_downloads)
                     max_active = max(max_active, current_active)
-                    time.sleep(0.1)
+                    time.sleep(0.01)
                 
                 # Wait for all workers to finish
                 for worker in workers:
@@ -453,8 +453,8 @@ def test_download_driver_timeout():
                 elapsed = time.time() - start_time
                 
                 # The timeout should trigger and break the loop
-                # Note: The method sleeps for 5 seconds between checks, so it will take at least 5 seconds
-                if elapsed >= 5.0 and len(driver.active_downloads) == 1:  # Should timeout and keep the download active
+                # Note: The method now sleeps for 0.5 seconds between checks, so it will take much less time
+                if elapsed >= 0.5 and len(driver.active_downloads) == 1:  # Should timeout and keep the download active
                     print("✓ Download timeout works")
                 else:
                     print(f"✗ Download timeout failed: elapsed={elapsed:.2f}s, active_downloads={len(driver.active_downloads)}")

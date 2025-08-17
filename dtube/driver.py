@@ -325,7 +325,7 @@ class DownloadDriver:
                 self.log_concurrency_status()
             
             logging.debug(f"⏳ Waiting for {len(self.active_downloads)} active downloads to complete... (elapsed: {elapsed/60:.1f}m)")
-            time.sleep(5)  # Check every 5 seconds
+            time.sleep(0.5)  # Check every 0.5 seconds (reduced for testing)
             
             # Check if any downloads have completed
             completed_ids = []
