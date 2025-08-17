@@ -1,320 +1,263 @@
-# dtube - YouTube Video Downloader Module
+# DownDaTube v3
 
-A Python module for downloading YouTube videos with pause/resume functionality using the `yt-dlp` library.
-
-> **Note**: This downloader was created mostly by AI assistance, demonstrating the capabilities of AI-powered code generation.
+A robust YouTube downloader with concurrency control, progress tracking, intelligent format selection, and advanced download management.
 
 ## Features
 
-- **Download videos** from YouTube URLs
-- **Pause downloads** at any time
-- **Resume paused downloads**
-- **Progress tracking** for active downloads
-- **Thread-safe** download management
-- **Multiple quality options** support
+- **Concurrent Downloads**: Download multiple videos simultaneously with configurable limits
+- **Smart Format Selection**: Automatically selects the best quality while ensuring audio is included
+- **Progress Tracking**: Real-time download progress monitoring with detailed status updates
+- **Batch Processing**: Download from text files containing multiple URLs
+- **Audio Verification**: Detect and fix videos downloaded without audio
+- **Resume Support**: Automatically resume interrupted downloads
+- **Quality Control**: Configurable video quality preferences with intelligent fallbacks
+- **Comprehensive Logging**: Detailed logging with configurable levels and emoji indicators
+- **Download Management**: Monitor active downloads and progress
+- **Download Utilities**: Check for incomplete downloads
 
 ## Installation
 
-The module requires Python 3.10+ and uses `pipenv` for dependency management.
-
+1. Clone the repository:
 ```bash
-# Install dependencies
+git clone <repository-url>
+cd downdatubev3
+```
+
+2. Install dependencies using pipenv:
+```bash
 pipenv install
-
-# Or install yt-dlp directly
-pip install yt-dlp
-
-# Install ffmpeg (required for video/audio merging)
-# Ubuntu/Debian:
-sudo apt update && sudo apt install ffmpeg
-
-# macOS (using Homebrew):
-brew install ffmpeg
-
-# Windows (using Chocolatey):
-choco install ffmpeg
-
-# Or download from: https://ffmpeg.org/download.html
 ```
 
-## Quick Start
-
-```python
-from dtube import download_video, pause_download, resume_download
-
-# Download a video
-video_id = download_video("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-
-# Pause the download
-pause_download(video_id)
-
-# Resume the download
-resume_download(video_id)
+3. Activate the virtual environment:
+```bash
+pipenv shell
 ```
 
-## API Reference
-
-### Core Functions
-
-#### `download_video(url, output_path="downloads", quality="best")`
-
-Downloads a video from YouTube and returns the video ID.
-
-**Parameters:**
-- `url` (str): YouTube video URL
-- `output_path` (str): Directory to save the downloaded video (default: "downloads")
-- `quality` (str): Video quality preference that controls the height parameter:
-  - "best" (default): 720p height
-  - "worst": 144p height  
-  - "720p", "480p", "360p": Specific height in pixels
-  - "720", "480", "360": Direct height values
-  - Any other value: Defaults to 720p height
-
-**Returns:**
-- `str`: YouTube video ID
-
-**Raises:**
-- `ValueError`: If URL is invalid or video ID cannot be extracted
-- `DownloadError`: If download fails
-
-**Example:**
-```python
-video_id = download_video(
-    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    output_path="my_videos",
-    quality="720p"
-)
-```
-
-#### `pause_download(video_id)`
-
-Pauses an active video download.
-
-**Parameters:**
-- `video_id` (str): YouTube video ID
-
-**Returns:**
-- `bool`: True if download was paused, False if not found
-
-**Example:**
-```python
-if pause_download(video_id):
-    print("Download paused successfully")
-```
-
-#### `resume_download(video_id)`
-
-Resumes a paused video download.
-
-**Parameters:**
-- `video_id` (str): YouTube video ID
-
-**Returns:**
-- `bool`: True if download was resumed, False if not found
-
-**Example:**
-```python
-if resume_download(video_id):
-    print("Download resumed successfully")
-```
-
-### Utility Functions
-
-#### `get_download_status(video_id)`
-
-Get the current status of a download.
-
-**Returns:**
-- `Dict` containing download status information or `None` if not found
-
-#### `list_active_downloads()`
-
-Get a list of all active downloads.
-
-**Returns:**
-- `List[Dict]` of dictionaries containing download information
-
-#### `get_download_progress(video_id)`
-
-Get the current progress of a download as a percentage.
-
-**Returns:**
-- `float`: Download progress as percentage (0-100) or `None` if not found
-
-#### `cancel_download(video_id)`
-
-Cancel a download and remove it from the manager.
-
-**Returns:**
-- `bool`: True if download was cancelled, False if not found
-
-## Usage Examples
+## Usage
 
 ### Basic Download
 
-```python
-from dtube import download_video
-
-# Simple download
-video_id = download_video("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-print(f"Downloading video: {video_id}")
-```
-
-### Download with Custom Settings
-
-```python
-from dtube import download_video
-
-# Download with specific quality and output path
-video_id = download_video(
-    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    output_path="videos",
-    quality="480p"  # Will download 480p height video
-)
-```
-
-### Pause and Resume Download
-
-```python
-import time
-from dtube import download_video, pause_download, resume_download
-from dtube.utils import get_download_status
-
-# Start download
-video_id = download_video("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-
-# Wait a bit for download to start
-time.sleep(5)
-
-# Pause download
-if pause_download(video_id):
-    print("Download paused")
-    
-    # Wait some time
-    time.sleep(10)
-    
-    # Resume download
-    if resume_download(video_id):
-        print("Download resumed")
-```
-
-### Monitor Download Progress
-
-```python
-import time
-from dtube import download_video
-from dtube.utils import get_download_progress, get_download_status
-
-# Start download
-video_id = download_video("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-
-# Monitor progress
-while True:
-    progress = get_download_progress(video_id)
-    status = get_download_status(video_id)
-    
-    if not status:
-        print("Download completed or failed")
-        break
-    
-    print(f"Progress: {progress:.1f}% | Status: {status['status']}")
-    time.sleep(1)
+Download a single video:
+```bash
+python dl.py https://youtube.com/watch?v=VIDEO_ID
 ```
 
 ### Multiple Downloads
 
-```python
-from dtube import download_video
-from dtube.utils import list_active_downloads
-
-# Start multiple downloads
-urls = [
-    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    "https://www.youtube.com/watch?v=9bZkp7q19f0",
-    "https://www.youtube.com/watch?v=kJQP7kiw5Fk"
-]
-
-video_ids = []
-for url in urls:
-    video_id = download_video(url)
-    video_ids.append(video_id)
-    print(f"Started download: {video_id}")
-
-# Check active downloads
-active = list_active_downloads()
-print(f"Active downloads: {len(active)}")
+Download multiple videos with concurrency control:
+```bash
+python dl.py -c 5 -q 720p https://youtube.com/watch?v=VIDEO1 https://youtube.com/watch?v=VIDEO2
 ```
 
-## Supported URL Formats
+### Batch Downloads
 
-The module supports various YouTube URL formats:
+Download from a text file containing URLs:
+```bash
+python dl.py -b urls.txt -c 3 -q best
+```
 
-- `https://www.youtube.com/watch?v=VIDEO_ID`
+### Quality Options
+
+- `best` (default): 720p height with MP4 format
+- `worst`: 144p height
+- `720p`, `480p`, `360p`: Specific height in pixels
+- `720`, `480`, `360`: Direct height values
+
+### Advanced Features
+
+#### Download Management
+Check download status and progress:
+```bash
+# Check for incomplete downloads (.part files)
+python dl.py --check-parts
+```
+
+#### Audio Issues and Fixes
+
+##### Problem
+Some videos may be downloaded without audio tracks. This typically happens when:
+- YouTube serves video and audio as separate streams
+- The downloader selects a video-only format
+- Audio merging fails during post-processing
+
+##### Detection
+Check for videos without audio:
+```bash
+python dl.py --check-audio
+```
+
+##### Solution
+The updated downloader now:
+1. **Prioritizes formats with both video and audio** using intelligent format selection
+2. **Uses improved format selection** to avoid video-only streams
+3. **Ensures proper audio merging** during download with FFmpeg
+4. **Provides redownload functionality** for problematic videos
+5. **Implements smart fallbacks** for quality selection
+
+To fix a video without audio:
+```bash
+# Redownload with audio
+python dl.py https://youtube.com/watch?v=VIDEO_ID
+```
+
+### Other Options
+
+Check for incomplete downloads:
+```bash
+python dl.py --check-parts
+```
+
+Set custom output directory:
+```bash
+python dl.py -o /path/to/output https://youtube.com/watch?v=VIDEO_ID
+```
+
+Set download timeout:
+```bash
+python dl.py -t 120 https://youtube.com/watch?v=VIDEO_ID
+```
+
+Set logging level:
+```bash
+python dl.py -l DEBUG https://youtube.com/watch?v=VIDEO_ID
+```
+
+## Configuration
+
+### Concurrency Limits
+- **Default**: 3 concurrent downloads
+- **Range**: 1-10 (higher values may cause rate limiting)
+- **Recommendation**: 3-5 for most users
+
+### Quality Settings
+- **best**: 720p MP4 (good balance of quality and file size)
+- **720p**: 1280x720 resolution
+- **480p**: 854x480 resolution
+- **360p**: 640x360 resolution
+
+### Format Selection Strategy
+The downloader uses intelligent format selection:
+1. **Primary**: 720p+ formats with video+audio in MP4
+2. **Fallback**: 480p+ formats with video+audio
+3. **Last resort**: Best available quality with proper audio merging
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Videos without audio**
+   - Use `python dl.py --check-audio` to identify problematic videos
+   - Redownload using the updated downloader
+   - The new format selection ensures audio is included
+
+2. **Incomplete downloads (.part files)**
+   - Use `python dl.py --check-parts` to identify incomplete downloads
+   - .part files are automatically cleaned up during downloads
+   - Interrupted downloads can be resumed
+
+3. **Rate limiting**
+   - Reduce concurrency with `-c` flag
+   - Use lower quality settings
+   - Add delays between batch downloads
+
+4. **Format selection issues**
+   - Check logs for format selection details
+   - Verify FFmpeg installation for audio merging
+
+### Logging
+
+Set log level for debugging:
+```bash
+python dl.py -l DEBUG https://youtube.com/watch?v=VIDEO_ID
+```
+
+Available levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+The logger provides emoji indicators for better readability:
+- 🔧 Configuration and setup
+- 📥 Download progress
+- ✅ Completion
+- ❌ Errors
+- ⚠️ Warnings
+
+## Technical Details
+
+### Format Selection
+The downloader uses intelligent format selection:
+1. **Primary**: Formats with both video and audio at requested quality
+2. **Fallback**: Separate video + audio streams with proper merging
+3. **Last resort**: Best available format
+
+### Audio Handling
+- **Format**: MP4 with M4A audio (best compatibility)
+- **Quality**: Best available audio
+- **Merging**: Automatic using FFmpeg
+- **Verification**: Audio track presence detection
+
+### Download Management
+- **Threading**: Separate threads for each download
+- **Progress**: Real-time progress tracking with percentage
+- **Status**: Comprehensive download state management
+- **Cleanup**: Automatic .part file cleanup
+
+### URL Support
+Supports multiple YouTube URL formats:
+- `https://youtube.com/watch?v=VIDEO_ID`
 - `https://youtu.be/VIDEO_ID`
-- `https://www.youtube.com/embed/VIDEO_ID`
-- Direct video ID strings
+- `https://youtube.com/embed/VIDEO_ID`
+- Direct video IDs
 
-## Quality Options
+## Examples
 
-Quality can be specified as:
-
-- **Preset values**: 
-  - `"best"` (default): 720p height
-  - `"worst"`: 144p height
-- **Resolution**: `"720p"`, `"480p"`, `"360p"`, etc.
-- **Direct height**: `"720"`, `"480"`, `"360"`, etc.
-- **Any other value**: Defaults to 720p height
-
-The quality parameter controls the `height` value in the format string `bestvideo[height=X]+bestaudio/bestvideo+bestaudio`, ensuring consistent video quality while maintaining the best available audio.
-
-## Error Handling
-
-The module provides comprehensive error handling:
-
-```python
-from dtube import download_video
-from yt_dlp.utils import DownloadError
-
-try:
-    video_id = download_video("https://www.youtube.com/watch?v=invalid")
-except ValueError as e:
-    print(f"Invalid URL: {e}")
-except DownloadError as e:
-    print(f"Download failed: {e}")
+### Download Sports Highlights
+```bash
+python dl.py -q 720p -c 2 \
+  "https://youtube.com/watch?v=VIDEO1" \
+  "https://youtube.com/watch?v=VIDEO2"
 ```
 
-## Thread Safety
+### Batch Download Tutorial Series
+```bash
+# Create urls.txt with tutorial URLs
+echo "https://youtube.com/watch?v=TUTORIAL1" > urls.txt
+echo "https://youtube.com/watch?v=TUTORIAL2" >> urls.txt
 
-All download management operations are thread-safe, allowing you to:
-
-- Start downloads from multiple threads
-- Pause/resume downloads from different threads
-- Monitor progress from any thread
-
-## File Structure
-
-```
-dtube/
-├── __init__.py          # Main module interface
-├── downloader.py        # Core download functionality
-└── utils.py            # Utility functions
-
-example.py               # Usage examples
-README.md               # This documentation
-Pipfile                 # Dependencies
+# Download with 3 concurrent downloads
+python dl.py -b urls.txt -c 3 -q best
 ```
 
-## Requirements
+### Check and Fix Audio Issues
+```bash
+# Check for videos without audio
+python dl.py --check-audio
 
-- Python 3.10+
-- yt-dlp library
-- ffmpeg (for merging video and audio streams)
-- threading support (built-in)
+# Fix a specific video
+python dl.py "https://youtube.com/watch?v=PROBLEMATIC_VIDEO"
+```
+
+
+
+### Monitor Downloads
+```bash
+# Check for incomplete downloads
+python dl.py --check-parts
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Contributing
+## Acknowledgments
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+- Built with [yt-dlp](https://github.com/yt-dlp/yt-dlp) for YouTube downloading
+- Uses [FFmpeg](https://ffmpeg.org/) for audio/video processing
+- Inspired by the need for reliable YouTube downloads with audio
+- Enhanced with intelligent format selection and progress tracking
