@@ -8,247 +8,242 @@ import os
 import time
 import tempfile
 import shutil
-from unittest.mock import patch
+import pytest
+from unittest.mock import patch, MagicMock
 
 # Add the parent directory to Python path for testing
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+@pytest.mark.timeout(5)
 def test_download_filename_format():
-    """Test that downloads use the new filename format with title and video ID."""
-    print("Testing download filename format...")
-    
-    try:
-        from dtube.downloader import _download_manager
-        from unittest.mock import patch
-        
-        # Mock video ID and title (no network call needed)
-        test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-        video_id = "dQw4w9WgXcQ"
-        test_title = "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)"
-        
-        # Mock the download_video function to avoid actual downloads
-        with patch('dtube.downloader.download_video') as mock_download:
-            mock_download.return_value = video_id
-            
-            # Mock the download manager to return test data
-            with patch.object(_download_manager, 'get_download') as mock_get_download:
-                mock_get_download.return_value = {
-                    'title': test_title,
-                    'ydl_opts': {
-                        'outtmpl': f"test_output/{test_title}_{video_id}.%(ext)s"
-                    }
-                }
-                
-                # Simulate download start
-                video_id = mock_download(test_url, output_path="test_output", quality="144p")
-                
-                if not video_id:
-                    print("✗ Download failed to start")
-                    return False
-                
-                print(f"✓ Download started with video ID: {video_id}")
-                
-                # Check if the download info contains the title
-                download_info = mock_get_download(video_id)
-                if not download_info:
-                    print("✗ Download info not found")
-                    return False
-                
-                title = download_info.get('title', '')
-                if not title:
-                    print("✗ No title found in download info")
-                    return False
-                
-                print(f"✓ Title extracted: '{title}'")
-                
-                # Check if the yt-dlp options contain the correct filename template
-                ydl_opts = download_info.get('ydl_opts', {})
-                outtmpl = ydl_opts.get('outtmpl', '')
-                
-                # Handle both string and dictionary outtmpl formats
-                if isinstance(outtmpl, dict):
-                    template = outtmpl.get('default', '')
-                else:
-                    template = outtmpl
-                
-                # The template should contain the title and video ID
-                if title in template and video_id in template:
-                    print(f"✓ Filename template contains title and video ID")
-                    print(f"  Template: {template}")
-                    return True
-                else:
-                    print(f"✗ Filename template missing title or video ID")
-                    print(f"  Template: {template}")
-                    print(f"  Title: {title}")
-                    print(f"  Video ID: {video_id}")
-                    return False
-            
-    except Exception as e:
-        print(f"✗ Download filename format test failed: {e}")
-        return False
+    """Test that download filenames are formatted correctly."""
+    from dtube.downloader import _create_filename_template
 
+    # Test with title and video ID
+    template = _create_filename_template("Test Video", "video123")
+    assert template == "Test Video_video123.%(ext)s"
 
+    # Test with empty title
+    template = _create_filename_template("", "video123")
+    assert template == "video123.%(ext)s"
+
+    # Test with None title
+    template = _create_filename_template(None, "video123")
+    assert template == "video123.%(ext)s"
+
+@pytest.mark.timeout(5)
 def test_download_manager_title_storage():
     """Test that the download manager properly stores title information."""
-    print("Testing download manager title storage...")
+    from dtube.downloader import _download_manager
+
+    # Clear any existing downloads
+    _download_manager._downloads.clear()
+
+    # Add a test download
+    test_video_id = "test123"
+    test_info = {
+        'url': 'https://youtube.com/watch?v=test123',
+        'title': 'Test Video Title',
+        'output_path': 'downloads',
+        'quality': 'best'
+    }
     
-    try:
-        from dtube.downloader import _download_manager
-        from unittest.mock import patch
-        
-        # Clear any existing downloads
-        _download_manager._downloads.clear()
-        
-        # Test URL
-        test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-        video_id = "dQw4w9WgXcQ"
-        test_title = "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)"
-        
-        # Mock the download_video function to avoid actual downloads
-        with patch('dtube.downloader.download_video') as mock_download:
-            mock_download.return_value = video_id
-            
-            # Mock the download manager to return test data
-            with patch.object(_download_manager, 'get_download') as mock_get_download:
-                mock_get_download.return_value = {
-                    'title': test_title,
-                    'url': test_url,
-                    'output_path': 'test_output'
-                }
-                
-                # Simulate download start
-                video_id = mock_download(test_url, output_path="test_output", quality="144p")
-                
-                if not video_id:
-                    print("✗ Download failed to start")
-                    return False
-                
-                # Check if title is stored in download info
-                download_info = mock_get_download(video_id)
-                if not download_info:
-                    print("✗ Download info not found")
-                    return False
-                
-                title = download_info.get('title', '')
-                if title:
-                    print(f"✓ Title stored in download info: '{title}'")
-                    
-                    # Verify title is a string and not empty
-                    if isinstance(title, str) and len(title) > 0:
-                        print("✓ Title is valid string")
-                        return True
-                    else:
-                        print("✗ Title is not a valid string")
-                        return False
-                else:
-                    print("✗ No title found in download info")
-                    return False
-            
-    except Exception as e:
-        print(f"✗ Download manager title storage test failed: {e}")
-        return False
-
-
-def test_filename_template_integration():
-    """Test that the filename template is properly integrated into yt-dlp options."""
-    print("Testing filename template integration...")
+    _download_manager.add_download(test_video_id, test_info)
     
-    try:
-        from dtube.downloader import _download_manager
-        from unittest.mock import patch
-        
-        # Test URL
-        test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-        video_id = "dQw4w9WgXcQ"
-        test_title = "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)"
-        
-        # Mock the download_video function to avoid actual downloads
-        with patch('dtube.downloader.download_video') as mock_download:
-            mock_download.return_value = video_id
-            
-            # Mock the download manager to return test data
-            with patch.object(_download_manager, 'get_download') as mock_get_download:
-                mock_get_download.return_value = {
-                    'title': test_title,
-                    'ydl_opts': {
-                        'outtmpl': f"test_output/{test_title}_{video_id}.%(ext)s"
-                    }
-                }
-                
-                # Simulate download start
-                video_id = mock_download(test_url, output_path="test_output", quality="144p")
-                
-                if not video_id:
-                    print("✗ Download failed to start")
-                    return False
-                
-                # Get download info
-                download_info = mock_get_download(video_id)
-                if not download_info:
-                    print("✗ Download info not found")
-                    return False
-                
-                # Check yt-dlp options
-                ydl_opts = download_info.get('ydl_opts', {})
-                outtmpl = ydl_opts.get('outtmpl', '')
-                
-                if not outtmpl:
-                    print("✗ No outtmpl found in yt-dlp options")
-                    return False
-                
-                print(f"✓ yt-dlp outtmpl: {outtmpl}")
-                
-                # Check if the template contains the video ID
-                if video_id in outtmpl:
-                    print("✓ Template contains video ID")
-                else:
-                    print("✗ Template missing video ID")
-                    return False
-                
-                # Check if the template contains the title (if available)
-                title = download_info.get('title', '')
-                if title and title in outtmpl:
-                    print("✓ Template contains title")
-                elif not title:
-                    print("✓ No title available, template uses video ID only")
-                else:
-                    print("✗ Template missing title")
-                    return False
-                
-                return True
-        
-    except Exception as e:
-        print(f"✗ Filename template integration test failed: {e}")
-        return False
-
-
-def run_download_filename_tests():
-    """Run all download filename tests."""
-    print("=== Download Filename Tests ===\n")
+    # Verify title is stored
+    stored_info = _download_manager.get_download(test_video_id)
+    assert stored_info is not None
+    assert stored_info['title'] == 'Test Video Title'
     
-    tests = [
-        test_download_filename_format,
-        test_download_manager_title_storage,
-        test_filename_template_integration
+    # Clean up
+    _download_manager.remove_download(test_video_id)
+
+@pytest.mark.timeout(5)
+def test_filename_template_generation():
+    """Test that filename templates are generated correctly."""
+    from dtube.downloader import _create_filename_template
+
+    test_cases = [
+        ("Test Video", "video123", "Test Video_video123.%(ext)s"),
+        ("", "video123", "video123.%(ext)s"),
+        ("Very Long Title That Should Be Truncated", "video456", "Very Long Title That Should Be Truncated_video456.%(ext)s"),
+        ("Title with Special Chars < > \" '", "video789", "Title with Special Chars < > \" '_video789.%(ext)s"),
     ]
-    
-    passed = 0
-    total = len(tests)
-    
-    for test in tests:
-        try:
-            if test():
-                passed += 1
-            print()
-        except Exception as e:
-            print(f"✗ Test {test.__name__} crashed: {e}")
-            print()
-    
-    print(f"Download filename tests: {passed}/{total} passed")
-    return passed == total
 
+    for title, video_id, expected in test_cases:
+        template = _create_filename_template(title, video_id)
+        assert template == expected, f"Expected '{expected}' for title '{title}' and video ID '{video_id}', got '{template}'"
 
-if __name__ == "__main__":
-    success = run_download_filename_tests()
-    sys.exit(0 if success else 1)
+@pytest.mark.timeout(5)
+def test_download_with_custom_filename():
+    """Test downloading with custom filename format."""
+    from dtube.downloader import download_video
+
+    # Create temporary directory for testing
+    temp_dir = tempfile.mkdtemp(prefix="dtube_test_")
+
+    try:
+        # Mock the actual download to avoid network calls
+        with patch('dtube.downloader._download_worker') as mock_worker:
+            mock_worker.return_value = None
+            
+            # Mock the title extraction
+            with patch('dtube.downloader._extract_video_title') as mock_extract:
+                mock_extract.return_value = "Test Video Title"
+                
+                # Test download with custom filename
+                video_id = download_video("https://youtube.com/watch?v=test123", temp_dir, "best")
+                
+                # Verify video ID was returned
+                assert video_id == "test123"
+                
+                # Verify download was added to manager
+                from dtube.downloader import _download_manager
+                download_info = _download_manager.get_download(video_id)
+                assert download_info is not None
+                assert download_info['title'] == "Test Video Title"
+                
+                # Clean up
+                _download_manager.remove_download(video_id)
+                
+    finally:
+        shutil.rmtree(temp_dir)
+
+@pytest.mark.timeout(5)
+def test_filename_cleaning():
+    """Test that filenames are properly cleaned for filesystem compatibility."""
+    from dtube.downloader import _clean_title_for_filename
+
+    test_cases = [
+        ("Normal Title", "Normal Title"),
+        ("Title with <brackets>", "Title with _brackets_"),
+        ("Title with /slashes\\", "Title with _slashes_"),
+        ("Title with |pipes|", "Title with _pipes_"),
+        ("Title with ?question?", "Title with _question_"),
+        ("Title with *asterisk*", "Title with _asterisk_"),
+        ("Title with \"quotes\"", "Title with _quotes_"),
+        ("Title with 'apostrophes'", "Title with 'apostrophes'"),  # Single quotes are not replaced in actual implementation
+    ]
+
+    for original, expected in test_cases:
+        cleaned = _clean_title_for_filename(original)
+        assert cleaned == expected, f"Expected '{expected}' for '{original}', got '{cleaned}'"
+
+@pytest.mark.timeout(5)
+def test_download_manager_integration():
+    """Test download manager integration with filename handling."""
+    from dtube.downloader import _download_manager, _create_filename_template
+
+    # Clear existing downloads
+    _download_manager._downloads.clear()
+
+    # Test adding a download with title
+    test_video_id = "test456"
+    test_info = {
+        'url': 'https://youtube.com/watch?v=test456',
+        'title': 'Integration Test Video',
+        'output_path': 'downloads',
+        'quality': '720p'
+    }
+    
+    _download_manager.add_download(test_video_id, test_info)
+    
+    # Verify filename template generation works with stored title
+    stored_info = _download_manager.get_download(test_video_id)
+    template = _create_filename_template(stored_info['title'], test_video_id)
+    assert template == "Integration Test Video_test456.%(ext)s"
+    
+    # Clean up
+    _download_manager.remove_download(test_video_id)
+
+@pytest.mark.timeout(5)
+def test_download_status_tracking():
+    """Test that download status is properly tracked with filename information."""
+    from dtube.downloader import _download_manager
+
+    # Clear existing downloads
+    _download_manager._downloads.clear()
+
+    # Add a test download
+    test_video_id = "test789"
+    test_info = {
+        'url': 'https://youtube.com/watch?v=test789',
+        'title': 'Status Test Video',
+        'output_path': 'downloads',
+        'quality': 'best'
+    }
+    
+    _download_manager.add_download(test_video_id, test_info)
+    
+    # Update status
+    _download_manager.update_download_status(test_video_id, 'downloading', progress=50.0)
+    
+    # Verify status was updated
+    stored_info = _download_manager.get_download(test_video_id)
+    assert stored_info['status'] == 'downloading'
+    assert stored_info['progress'] == 50.0
+    assert stored_info['title'] == 'Status Test Video'
+    
+    # Clean up
+    _download_manager.remove_download(test_video_id)
+
+@pytest.mark.timeout(5)
+def test_download_cleanup():
+    """Test that downloads can be properly cleaned up."""
+    from dtube.downloader import _download_manager
+
+    # Clear existing downloads
+    _download_manager._downloads.clear()
+
+    # Add multiple test downloads
+    test_video_ids = ["cleanup1", "cleanup2", "cleanup3"]
+    for video_id in test_video_ids:
+        test_info = {
+            'url': f'https://youtube.com/watch?v={video_id}',
+            'title': f'Cleanup Test {video_id}',
+            'output_path': 'downloads',
+            'quality': 'best'
+        }
+        _download_manager.add_download(video_id, test_info)
+    
+    # Verify downloads were added
+    assert len(_download_manager._downloads) == 3
+    
+    # Clean up all downloads
+    for video_id in test_video_ids:
+        _download_manager.remove_download(video_id)
+    
+    # Verify all downloads were removed
+    assert len(_download_manager._downloads) == 0
+
+@pytest.mark.timeout(5)
+def test_download_error_handling():
+    """Test that download errors are properly handled."""
+    from dtube.downloader import _download_manager
+
+    # Clear existing downloads
+    _download_manager._downloads.clear()
+
+    # Add a test download
+    test_video_id = "error123"
+    test_info = {
+        'url': 'https://youtube.com/watch?v=error123',
+        'title': 'Error Test Video',
+        'output_path': 'downloads',
+        'quality': 'best'
+    }
+    
+    _download_manager.add_download(test_video_id, test_info)
+    
+    # Simulate an error
+    _download_manager.update_download_status(test_video_id, 'error', error='Test error message')
+    
+    # Verify error status was recorded
+    stored_info = _download_manager.get_download(test_video_id)
+    assert stored_info['status'] == 'error'
+    assert stored_info['error'] == 'Test error message'
+    assert stored_info['title'] == 'Error Test Video'  # Title should still be preserved
+    
+    # Clean up
+    _download_manager.remove_download(test_video_id)
