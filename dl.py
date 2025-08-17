@@ -54,6 +54,7 @@ Examples:
   python dl.py -o videos -q best -t 120 video1 video2 video3
   python dl.py -b urls.txt -c 3 -q 720p
   python dl.py --batch playlist.txt --concurrent 2 --quality best
+  python dl.py --check-parts  # Check for incomplete downloads
 
 Note: .part files are automatically cleaned up during and after downloads, but startup cleanup is disabled to allow resumption of interrupted downloads.
         """
@@ -109,6 +110,8 @@ Note: .part files are automatically cleaned up during and after downloads, but s
         action='store_true',
         help='Check for .part files and exit without downloading'
     )
+    
+
     
     parser.add_argument(
         '--version',
@@ -200,8 +203,7 @@ Note: .part files are automatically cleaned up during and after downloads, but s
     driver = DownloadDriver(
         max_concurrent=args.concurrent,
         output_path=args.output,
-        quality=args.quality,
-        logger=logger
+        quality=args.quality
     )
     
     # Add URLs to queue

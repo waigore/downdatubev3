@@ -38,8 +38,7 @@ def test_download_driver_initialization():
         custom_driver = DownloadDriver(
             max_concurrent=5,
             output_path="custom_downloads",
-            quality="720p",
-            logger=logging.getLogger("test")
+            quality="720p"
         )
         if (custom_driver.max_concurrent == 5 and 
             custom_driver.output_path == "custom_downloads" and 

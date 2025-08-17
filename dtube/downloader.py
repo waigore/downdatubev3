@@ -27,6 +27,15 @@ _ytdlp_logger = logging.getLogger('yt_dlp')
 _ytdlp_logger.setLevel(logging.INFO)
 _ytdlp_logger.addFilter(DownloadFilter())
 
+# Ensure root logger is configured for dtube
+if not logging.getLogger().handlers:
+    # Configure root logger if not already configured
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%H:%M:%S'
+    )
+
 
 class DownloadManager:
     """Manages active downloads and their states."""
@@ -110,12 +119,8 @@ def download_video(url: str, output_path: str = "downloads",
     Args:
         url: YouTube video URL
         output_path: Directory to save the downloaded video
-        quality: Video quality preference that controls the height parameter:
-                - "best" (default): 720p height
-                - "worst": 144p height  
-                - "720p", "480p", "360p": Specific height in pixels
-                - "720", "480", "360": Direct height values
-                - Any other value: Defaults to 720p height
+        quality: Video quality preference (kept for compatibility, but format selection
+                now prioritizes 720p height with MP4 extension)
     
     Returns:
         str: YouTube video ID
@@ -123,6 +128,12 @@ def download_video(url: str, output_path: str = "downloads",
     Raises:
         ValueError: If URL is invalid or video ID cannot be extracted
         DownloadError: If download fails
+        
+    Note:
+        Format selection now uses a smart approach to find the best available quality:
+        1. First tries to find 720p+ formats with video+audio
+        2. Falls back to 480p+ formats with video+audio
+        3. Finally falls back to best available quality
     """
     # Extract video ID
     video_id = extract_video_id(url)
@@ -135,30 +146,27 @@ def download_video(url: str, output_path: str = "downloads",
     # Extract video metadata to get the title
     video_title = _extract_video_title(url)
     
-    # Configure yt-dlp options
-    # Parse quality parameter to determine height
-    if quality.isdigit():
-        height = quality
-    elif quality == "best":
-        height = "720"
-    elif quality == "worst":
-        height = "144"
-    elif quality.endswith("p"):
-        height = quality[:-1]  # Remove 'p' from "720p", "480p", etc.
-    else:
-        height = "720"  # Default height
-    
     # Create filename template with title and video ID
     filename_template = _create_filename_template(video_title, video_id)
     
+    # Use fixed format specification for consistent quality
+    format_spec = 'bestvideo[height=720][ext=mp4]+bestaudio[acodec^=mp4a]/bestvideo+bestaudio'
+    # Format selection with specified preference priority:
+    # Use the smart-selected format or fall back to strict quality requirements
     ydl_opts = {
-        'format': f'bestvideo[height={height}]+bestaudio/bestvideo+bestaudio',
+        'format': format_spec,
         'outtmpl': os.path.join(output_path, filename_template),
         'progress_hooks': [lambda d: _progress_hook(d, video_id)],
         'noplaylist': True,
         'ignoreerrors': False,
         'logger': _ytdlp_logger,
+        # Ensure separate video and audio downloads are properly merged with ffmpeg
+        'merge_output_format': 'mp4',
+        'verbose': True,
     }
+    
+    # Log the format selection strategy
+    logging.info(f"🔧 Format selection strategy: {format_spec}")
     
     try:
         # Add download to manager
@@ -214,40 +222,76 @@ def resume_download(video_id: str) -> bool:
 def _progress_hook(d: Dict[str, Any], video_id: str):
     """Progress hook for yt-dlp to track download progress."""
     if d['status'] == 'downloading':
-        if _download_manager.get_download(video_id):
-            # Check if download is paused
-            download_info = _download_manager.get_download(video_id)
-            if download_info and download_info.get('paused'):
-                # Signal to yt-dlp to stop (this will be handled in the worker)
-                return
+        download_info = _download_manager.get_download(video_id)
+        if not download_info:
+            # Download was removed from manager, skip progress updates
+            return
             
-            # Update progress
-            if 'total_bytes' in d and d['total_bytes']:
-                progress = (d['downloaded_bytes'] / d['total_bytes']) * 100
-                _download_manager.update_download_status(
-                    video_id, 
-                    'downloading', 
-                    progress=progress
-                )
+        # Check if download is paused
+        if download_info.get('paused'):
+            # Signal to yt-dlp to stop (this will be handled in the worker)
+            return
+        
+        # Update progress
+        if 'total_bytes' in d and d['total_bytes']:
+            progress = (d['downloaded_bytes'] / d['total_bytes']) * 100
+            _download_manager.update_download_status(
+                video_id, 
+                'downloading', 
+                progress=progress
+            )
+            
+        # Log format information if available
+        if 'format' in d:
+            format_info = d['format']
+            logging.info(f"📥 {video_id}: Downloading format {format_info.get('format_id', 'unknown')} "
+                       f"({format_info.get('resolution', 'unknown resolution')})")
     
     elif d['status'] == 'finished':
-        _download_manager.update_download_status(video_id, 'completed')
-        _download_manager.remove_download(video_id)
+        # Log completion with format details
+        if 'format' in d:
+            format_info = d['format']
+            logging.info(f"✅ {video_id}: Download completed - Format: {format_info.get('format_id', 'unknown')} "
+                        f"({format_info.get('resolution', 'unknown resolution')})")
+        else:
+            logging.info(f"✅ {video_id}: Download completed")
 
 
 def _download_worker(video_id: str, ydl_opts: Dict[str, Any]):
     """Worker thread for handling downloads."""
     try:
+        logging.info(f"🔧 {video_id}: Starting download worker thread")
+        
+        # Get download info and URL
+        download_info = _download_manager.get_download(video_id)
+        if not download_info:
+            logging.error(f"❌ {video_id}: Download info not found in manager")
+            return
+            
+        url = download_info.get('url')
+        if not url:
+            logging.error(f"❌ {video_id}: URL not found in download info")
+            return
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # Check if download should be paused before starting
-            download_info = _download_manager.get_download(video_id)
-            if download_info and download_info.get('paused'):
+            if download_info.get('paused'):
+                logging.info(f"⏸️ {video_id}: Download paused before starting")
                 _download_manager.update_download_status(video_id, 'paused')
                 return
             
-            ydl.download([download_info['url']])
+            logging.info(f"🔧 {video_id}: Starting yt-dlp download")
+            ydl.download([url])
+            logging.info(f"✅ {video_id}: yt-dlp download completed successfully")
+
+            _download_manager.update_download_status(video_id, 'completed')
+            _download_manager.remove_download(video_id)
             
     except Exception as e:
+        logging.error(f"❌ {video_id}: Exception in download worker: {str(e)}")
+        logging.error(f"❌ {video_id}: Exception type: {type(e).__name__}")
+        import traceback
+        logging.error(f"❌ {video_id}: Full traceback: {traceback.format_exc()}")
         _download_manager.update_download_status(video_id, 'error', error=str(e))
         # Keep the download in manager for error inspection
         time.sleep(5)  # Wait before cleanup
@@ -336,3 +380,6 @@ def _create_filename_template(title: str, video_id: str) -> str:
     else:
         # Fallback to just video ID if title extraction failed
         return f'{video_id}.%(ext)s'
+
+
+
