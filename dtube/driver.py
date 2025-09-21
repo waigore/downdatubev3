@@ -6,8 +6,9 @@ import os
 import time
 import threading
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from queue import Queue, Empty
+from datetime import datetime
 
 from .downloader import download_video
 from .utils import get_download_status, get_download_progress, list_active_downloads
@@ -16,7 +17,7 @@ from .utils import get_download_status, get_download_progress, list_active_downl
 class DownloadDriver:
     """Manages multiple YouTube downloads with concurrency control."""
     
-    def __init__(self, max_concurrent: int = 3, output_path: str = "downloads", quality: str = "best"):
+    def __init__(self, max_concurrent: int = 3, output_path: str = "downloads", quality: str = "best", download_manager=None):
         self.max_concurrent = max_concurrent
         self.output_path = output_path
         self.quality = quality
@@ -28,15 +29,23 @@ class DownloadDriver:
         self.lock = threading.Lock()
         self._shutdown_requested = False
         
+        # Use provided download manager or fall back to global one
+        if download_manager:
+            self.download_manager = download_manager
+        else:
+            # Import download manager for queue operations (fallback)
+            from .downloader import _download_manager
+            self.download_manager = _download_manager
+        
         # Ensure output directory exists
         self.ensure_output_directory()
-        
+    
     def ensure_output_directory(self):
         """Ensure the output directory exists."""
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
             logging.info(f"📁 Created output directory: {self.output_path}")
-        
+    
     def add_url(self, url: str):
         """Add a URL to the download queue."""
         self.download_queue.put(url)
@@ -45,7 +54,116 @@ class DownloadDriver:
         """Add multiple URLs to the download queue."""
         for url in urls:
             self.download_queue.put(url)
+    
+    def add_to_download_queue(self, video_id: str, queue_info: Dict[str, Any]) -> str:
+        """Add a download to the persistent download queue."""
+        try:
+            # Ensure required fields are present
+            if 'url' not in queue_info:
+                raise ValueError("URL is required for queue items")
             
+            # Set default values
+            queue_data = {
+                'url': queue_info['url'],
+                'title': queue_info.get('title', ''),
+                'priority': queue_info.get('priority', 5),
+                'scheduled_time': queue_info.get('scheduled_time', datetime.now()),
+                'max_concurrent': queue_info.get('max_concurrent', 1),
+                'output_path': queue_info.get('output_path', self.output_path),
+                'quality': queue_info.get('quality', self.quality),
+                'max_retries': queue_info.get('max_retries', 3),
+                'user_notes': queue_info.get('user_notes', ''),
+                'tags': queue_info.get('tags', [])
+            }
+            
+            result_id = self.download_manager.add_to_queue(video_id, queue_data)
+            logging.info(f"✅ Added {video_id} to persistent download queue")
+            return result_id
+            
+        except Exception as e:
+            logging.error(f"❌ Failed to add {video_id} to download queue: {e}")
+            raise
+    
+    def get_queued_downloads(self, status: str = None, priority: int = None, 
+                            limit: int = None) -> List[Dict[str, Any]]:
+        """Get queued downloads with optional filtering."""
+        return self.download_manager.get_queued_downloads(status, priority, limit)
+    
+    def get_queue_stats(self) -> Dict[str, Any]:
+        """Get comprehensive queue statistics."""
+        return self.download_manager.get_queue_stats()
+    
+    def promote_queue_item(self, video_id: str, new_priority: int) -> bool:
+        """Promote a queue item to higher priority."""
+        return self.download_manager.promote_queue_item(video_id, new_priority)
+    
+    def demote_queue_item(self, video_id: str, new_priority: int) -> bool:
+        """Demote a queue item to lower priority."""
+        return self.download_manager.demote_queue_item(video_id, new_priority)
+    
+    def move_to_front_of_queue(self, video_id: str) -> bool:
+        """Move a queue item to the front of the queue."""
+        return self.download_manager.move_to_front_of_queue(video_id)
+    
+    def remove_from_queue(self, video_id: str) -> bool:
+        """Remove an item from the queue."""
+        return self.download_manager.remove_from_queue(video_id)
+    
+    def clear_queue(self, status: str = None) -> int:
+        """Clear all items from queue with optional status filter."""
+        return self.download_manager.clear_queue(status)
+    
+    def retry_failed_queue_item(self, video_id: str) -> bool:
+        """Retry a failed queue item."""
+        return self.download_manager.retry_failed_queue_item(video_id)
+    
+    def start_queued_download(self, video_id: str) -> bool:
+        """Start a download from the persistent queue."""
+        return self.download_manager.start_queued_download(video_id)
+    
+    def process_queue_items(self, max_items: int = None):
+        """Process items from the persistent download queue."""
+        try:
+            queued_items = self.get_queued_downloads(status='queued')
+            if not queued_items:
+                logging.info("📋 No queued downloads to process")
+                return
+            
+            # Sort by priority (highest first)
+            queued_items.sort(key=lambda x: x.get('priority', 5), reverse=True)
+            
+            # Limit the number of items to process
+            if max_items:
+                queued_items = queued_items[:max_items]
+            
+            logging.info(f"📋 Processing {len(queued_items)} queued downloads")
+            
+            for item in queued_items:
+                video_id = item['video_id']
+                
+                # Check if we can start a new download
+                with self.lock:
+                    if len(self.active_downloads) >= self.max_concurrent:
+                        logging.info(f"⏳ Max concurrent downloads reached ({self.max_concurrent}), waiting...")
+                        break
+                
+                # Start the queued download
+                if self.start_queued_download(video_id):
+                    # Add to active downloads for monitoring
+                    with self.lock:
+                        self.active_downloads[video_id] = {
+                            'url': item.get('url', ''),
+                            'start_time': time.time(),
+                            'from_queue': True
+                        }
+                    
+                    logging.info(f"✅ Started queued download for {video_id}")
+                else:
+                    logging.error(f"❌ Failed to start queued download for {video_id}")
+                    
+        except Exception as e:
+            logging.error(f"❌ Error processing queue items: {e}")
+    
     def start_download(self, url: str) -> Optional[str]:
         """Start a single download and return the video ID."""
         try:
@@ -325,7 +443,7 @@ class DownloadDriver:
                 self.log_concurrency_status()
             
             logging.debug(f"⏳ Waiting for {len(self.active_downloads)} active downloads to complete... (elapsed: {elapsed/60:.1f}m)")
-            time.sleep(5)  # Check every 5 seconds
+            time.sleep(0.5)  # Check every 0.5 seconds (reduced for testing)
             
             # Check if any downloads have completed
             completed_ids = []
