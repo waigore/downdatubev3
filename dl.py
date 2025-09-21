@@ -15,6 +15,28 @@ import os
 from dtube import DownloadDriver
 
 
+def initialize_download_system():
+    """Initialize the download system at application startup."""
+    try:
+        # Create data access instance
+        from dtube.data_access import DownloadDataAccess
+        data_access = DownloadDataAccess()
+        
+        # Ensure database is ready (this will recreate if corrupted)
+        data_access.ensure_database_ready()
+        
+        # Create download manager with initialized data access
+        from dtube.downloader import DownloadManager
+        download_manager = DownloadManager(data_access)
+        
+        logging.info("✅ Download system initialized successfully")
+        return download_manager
+        
+    except Exception as e:
+        logging.error(f"❌ Failed to initialize download system: {e}")
+        raise
+
+
 def setup_logging(level: str = "INFO") -> logging.Logger:
     """Setup logging configuration."""
     # Create logger
@@ -200,16 +222,20 @@ Note: .part files are automatically cleaned up during and after downloads, but s
             sys.exit(1)
     
     # Create and run download driver
-    driver = DownloadDriver(
-        max_concurrent=args.concurrent,
-        output_path=args.output,
-        quality=args.quality
-    )
-    
-    # Add URLs to queue
-    driver.add_urls(urls_to_download)
-    
     try:
+        # Initialize download system at startup
+        download_manager = initialize_download_system()
+        
+        driver = DownloadDriver(
+            max_concurrent=args.concurrent,
+            output_path=args.output,
+            quality=args.quality,
+            download_manager=download_manager
+        )
+        
+        # Add URLs to queue
+        driver.add_urls(urls_to_download)
+        
         # Set timeout for waiting for downloads
         driver.wait_timeout = args.timeout
         driver.run()

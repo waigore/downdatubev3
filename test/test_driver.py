@@ -216,3 +216,230 @@ def test_download_driver_integration():
 
     finally:
         shutil.rmtree(temp_dir)
+
+@pytest.mark.timeout(5)
+def test_download_driver_queue_operations():
+    """Test DownloadDriver queue operations."""
+    from dtube import DownloadDriver
+
+    driver = DownloadDriver()
+    
+    # Test adding to persistent download queue
+    test_video_id = "test_driver_queue_123"
+    queue_info = {
+        'url': 'https://youtube.com/watch?v=test_driver_queue_123',
+        'title': 'Driver Queue Test Video',
+        'priority': 9,
+        'output_path': 'downloads',
+        'quality': '720p'
+    }
+    
+    result_id = driver.add_to_download_queue(test_video_id, queue_info)
+    assert result_id is not None
+    
+    # Test getting queued downloads
+    queued = driver.get_queued_downloads(status='queued')
+    assert len(queued) == 1
+    assert queued[0]['video_id'] == test_video_id
+    assert queued[0]['priority'] == 9
+    
+    # Test queue statistics
+    stats = driver.get_queue_stats()
+    assert stats['total_items'] >= 1
+    assert stats['queued_items'] >= 1
+    
+    # Test priority management
+    assert driver.promote_queue_item(test_video_id, 10)
+    assert driver.demote_queue_item(test_video_id, 8)
+    
+    # Test moving to front
+    assert driver.move_to_front_of_queue(test_video_id)
+    
+    # Clean up
+    driver.remove_from_queue(test_video_id)
+
+@pytest.mark.timeout(5)
+def test_download_driver_queue_integration():
+    """Test integration between DownloadDriver and queue management."""
+    from dtube import DownloadDriver
+
+    driver = DownloadDriver()
+    
+    # Test video ID
+    test_video_id = "test_driver_integration_123"
+    
+    # Add to queue first
+    queue_info = {
+        'url': 'https://youtube.com/watch?v=test_driver_integration_123',
+        'title': 'Driver Integration Test Video',
+        'priority': 7
+    }
+    
+    driver.add_to_download_queue(test_video_id, queue_info)
+    
+    # Start download from queue
+    assert driver.start_queued_download(test_video_id)
+    
+    # Verify download was created
+    download_info = driver.download_manager.get_download(test_video_id)
+    assert download_info is not None
+    assert download_info['status'] == 'downloading'
+    
+    # Clean up
+    driver.download_manager.remove_download(test_video_id)
+    driver.remove_from_queue(test_video_id)
+
+@pytest.mark.timeout(5)
+def test_download_driver_queue_processing():
+    """Test DownloadDriver queue processing functionality."""
+    from dtube import DownloadDriver
+
+    driver = DownloadDriver(max_concurrent=2)
+    
+    # Add multiple items to queue
+    test_items = []
+    for i in range(3):
+        video_id = f"process_test_{i}"
+        queue_info = {
+            'url': f'https://youtube.com/watch?v={video_id}',
+            'title': f'Process Test Video {i}',
+            'priority': 8 - i  # Different priorities
+        }
+        driver.add_to_download_queue(video_id, queue_info)
+        test_items.append(video_id)
+    
+    # Test processing queue items
+    driver.process_queue_items(max_items=2)
+    
+    # Verify some items were processed
+    queued = driver.get_queued_downloads(status='queued')
+    assert len(queued) <= 1  # At most 1 should remain queued
+    
+    # Clean up
+    for video_id in test_items:
+        driver.download_manager.remove_download(video_id)
+        driver.remove_from_queue(video_id)
+
+@pytest.mark.timeout(5)
+def test_download_driver_queue_error_handling():
+    """Test DownloadDriver queue error handling."""
+    from dtube import DownloadDriver
+
+    driver = DownloadDriver()
+    
+    # Test retry functionality
+    test_video_id = "test_driver_retry_123"
+    queue_info = {
+        'url': 'https://youtube.com/watch?v=test_driver_retry_123',
+        'title': 'Driver Retry Test Video',
+        'max_retries': 2
+    }
+    
+    driver.add_to_download_queue(test_video_id, queue_info)
+    
+    # Test retry
+    assert driver.retry_failed_queue_item(test_video_id)
+    
+    # Verify retry count increased
+    queued = driver.get_queued_downloads(status='queued')[0]
+    assert queued['retry_count'] == 1
+    
+    # Test max retries limit
+    assert driver.retry_failed_queue_item(test_video_id)
+    assert not driver.retry_failed_queue_item(test_video_id)
+    
+    # Clean up
+    driver.remove_from_queue(test_video_id)
+
+@pytest.mark.timeout(5)
+def test_download_driver_queue_clear_operations():
+    """Test DownloadDriver queue clear operations."""
+    from dtube import DownloadDriver
+
+    driver = DownloadDriver()
+    
+    # Add multiple test items
+    test_items = []
+    for i in range(3):
+        video_id = f"driver_clear_test_{i}"
+        queue_info = {
+            'url': f'https://youtube.com/watch?v={video_id}',
+            'title': f'Driver Clear Test Video {i}',
+            'priority': 5 + i
+        }
+        driver.add_to_download_queue(video_id, queue_info)
+        test_items.append(video_id)
+    
+    # Test clearing by status
+    cleared = driver.clear_queue(status='queued')
+    assert cleared == 3
+    
+    # Verify queue is empty
+    queued = driver.get_queued_downloads()
+    assert len(queued) == 0
+
+@pytest.mark.timeout(5)
+def test_download_driver_queue_priority_operations():
+    """Test DownloadDriver queue priority operations."""
+    from dtube import DownloadDriver
+
+    driver = DownloadDriver()
+    
+    # Add test item
+    test_video_id = "test_driver_priority_123"
+    queue_info = {
+        'url': 'https://youtube.com/watch?v=test_driver_priority_123',
+        'title': 'Driver Priority Test Video',
+        'priority': 5
+    }
+    
+    driver.add_to_download_queue(test_video_id, queue_info)
+    
+    # Test priority promotion
+    assert driver.promote_queue_item(test_video_id, 8)
+    queued = driver.get_queued_downloads(status='queued')[0]
+    assert queued['priority'] == 8
+    
+    # Test priority demotion
+    assert driver.demote_queue_item(test_video_id, 6)
+    queued = driver.get_queued_downloads(status='queued')[0]
+    assert queued['priority'] == 6
+    
+    # Test moving to front
+    assert driver.move_to_front_of_queue(test_video_id)
+    queued = driver.get_queued_downloads(status='queued')[0]
+    assert queued['priority'] > 6  # Should be higher than previous priority
+    
+    # Clean up
+    driver.remove_from_queue(test_video_id)
+
+@pytest.mark.timeout(5)
+def test_download_driver_queue_concurrency():
+    """Test DownloadDriver queue concurrency handling."""
+    from dtube import DownloadDriver
+
+    driver = DownloadDriver(max_concurrent=1)
+    
+    # Add multiple items to queue
+    test_items = []
+    for i in range(3):
+        video_id = f"concurrency_test_{i}"
+        queue_info = {
+            'url': f'https://youtube.com/watch?v={video_id}',
+            'title': f'Concurrency Test Video {i}',
+            'priority': 8 - i  # Different priorities
+        }
+        driver.add_to_download_queue(video_id, queue_info)
+        test_items.append(video_id)
+    
+    # Test processing with concurrency limit
+    driver.process_queue_items()
+    
+    # Verify only one item was processed (due to max_concurrent=1)
+    queued = driver.get_queued_downloads(status='queued')
+    assert len(queued) >= 2  # At least 2 should remain queued
+    
+    # Clean up
+    for video_id in test_items:
+        driver.download_manager.remove_download(video_id)
+        driver.remove_from_queue(video_id)

@@ -188,52 +188,64 @@ class DownloadDataAccess:
 ```
 
 ##### CRUD Operations Interface
-The data access layer provides comprehensive CRUD operations for each collection:
+The data access layer provides comprehensive CRUD operations for each collection. The caller is responsible for ensuring database initialization:
 
 ```python
     # Download CRUD operations
     def create_download(self, download_data: Dict[str, Any]) -> str:
         """Create a new download record."""
+        # ... implementation
         
     def get_download(self, video_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve download by video ID."""
+        # ... implementation
         
     def update_download(self, video_id: str, update_data: Dict[str, Any]) -> bool:
         """Update download record."""
+        # ... implementation
         
     def delete_download(self, video_id: str) -> bool:
         """Delete download record."""
+        # ... implementation
         
     def list_downloads(self, filters: Dict[str, Any] = None, 
                       sort_by: str = "created_at", limit: int = None) -> List[Dict[str, Any]]:
         """List downloads with optional filtering and sorting."""
+        # ... implementation
     
     # History operations
     def add_to_history(self, download_data: Dict[str, Any]) -> str:
         """Move completed download to history."""
+        # ... implementation
         
     def get_download_history(self, video_id: str = None, 
                            filters: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """Retrieve download history."""
+        # ... implementation
     
     # Event logging operations
     def log_event(self, video_id: str, event_type: str, event_data: Dict[str, Any]) -> str:
         """Log a download event."""
+        # ... implementation
         
     def get_events(self, video_id: str = None, 
                   event_type: str = None, 
                   date_range: Tuple[datetime, datetime] = None) -> List[Dict[str, Any]]:
         """Retrieve events with optional filtering."""
+        # ... implementation
     
     # Queue operations
     def add_to_queue(self, queue_data: Dict[str, Any]) -> str:
         """Add download to queue."""
+        # ... implementation
         
     def get_next_queued_download(self) -> Optional[Dict[str, Any]]:
         """Get next download from queue."""
+        # ... implementation
         
     def update_queue_status(self, video_id: str, status: str) -> bool:
         """Update queue item status."""
+        # ... implementation
 ```
 
 ##### Helper Functions and Initialization Scripts
@@ -252,11 +264,7 @@ The data access layer includes helper functions for common operations and initia
     def validate_database_integrity(self) -> Dict[str, Any]:
         """Validate database integrity and report issues."""
         
-    def backup_database(self, backup_path: str) -> bool:
-        """Create database backup."""
-        
-    def restore_database(self, backup_path: str) -> bool:
-        """Restore database from backup."""
+
 ```
 
 #### DownloadManager Class Refactor
@@ -361,7 +369,101 @@ class DownloadManager:
                 self.data_access.delete_download(video_id)
 ```
 
-#### Initialization and Startup Management
+#### Database Persistence and Initialization
+
+##### Persistent Database Requirements
+The Mongita database must be persistent across application sessions with the following characteristics:
+
+- **Session Persistence**: If a previous session of dtube created the database, the same database will be used for subsequent app runs
+- **Initialization Logic**: Database checks (e.g. existence and proper initialization of collections and indexes) should be executed at `dl.py` startup
+- **Assumption of Initialization**: The data access and downloader layers should assume that the database is fully initialized on any data access operation. It is the caller's responsibility to ensure the database exists and is properly initialized
+
+##### Database Initialization and Recovery
+The system provides a helper function to ensure database integrity and proper initialization:
+
+```python
+class DownloadDataAccess:
+    def __init__(self, db_path: str = "./data/dtube_downloads"):
+        self.db_path = db_path
+        self.db = None
+        self.collections = {}
+        self._initialized = False
+        self._lock = threading.Lock()
+        
+    def ensure_database_ready(self):
+        """Ensure database is ready for operations, recreating if necessary."""
+        if self._initialized:
+            return
+            
+        with self._lock:
+            if self._initialized:  # Double-check pattern
+                return
+                
+            try:
+                # Check if database exists and is valid
+                if self._is_database_valid():
+                    # Database is valid, just connect and set up collections reference
+                    self._connect_database()
+                    self._initialized = True
+                    logging.info("✅ Existing database loaded successfully")
+                else:
+                    # Database is corrupted or missing, recreate from scratch
+                    logging.warning("⚠️ Database appears corrupted or missing, recreating...")
+                    self._recreate_database()
+                    self._initialized = True
+                    logging.info("✅ Database recreated successfully")
+            except Exception as e:
+                logging.error(f"❌ Failed to initialize database: {e}")
+                # Attempt to recreate database as last resort
+                try:
+                    logging.info("🔄 Attempting database recreation as fallback...")
+                    self._recreate_database()
+                    self._initialized = True
+                    logging.info("✅ Database recreated successfully after fallback")
+                except Exception as recreate_error:
+                    logging.error(f"❌ Failed to recreate database: {recreate_error}")
+                    raise
+    
+    def _is_database_valid(self) -> bool:
+        """Check if existing database is valid and contains required collections."""
+        try:
+            if not os.path.exists(self.db_path):
+                return False
+                
+            # Try to connect and verify collections exist
+            temp_db = Mongita(self.db_path)
+            required_collections = ['downloads', 'download_history', 'download_events', 'download_queue']
+            
+            for collection_name in required_collections:
+                try:
+                    collection = temp_db.get_collection(collection_name)
+                    # Try a simple operation to verify collection is functional
+                    collection.find_one()
+                except Exception:
+                    return False
+                    
+            return True
+        except Exception:
+            return False
+    
+    def _recreate_database(self):
+        """Recreate database from scratch with all required collections and indexes."""
+        try:
+            # Remove existing database directory if it exists
+            if os.path.exists(self.db_path):
+                import shutil
+                shutil.rmtree(self.db_path)
+                logging.info("🗑️ Removed corrupted database directory")
+            
+            # Create fresh database
+            self._connect_database()
+            self._initialize_collections()
+            self._create_indexes()
+            logging.info("🆕 Fresh database created with all collections and indexes")
+        except Exception as e:
+            logging.error(f"❌ Failed to recreate database: {e}")
+            raise
+```
 
 ##### Startup Sequence
 The data access layer handles all initialization at startup, ensuring indexes and collections are created only when necessary:
@@ -378,32 +480,131 @@ class DownloadManager:
     def _initialize_at_startup(self):
         """Initialize data access layer during startup."""
         try:
-            if not self.data_access.is_initialized():
-                logging.info("🔧 Initializing download data access layer...")
-                self.data_access.initialize()
-                logging.info("✅ Download data access layer ready")
-            else:
-                logging.info("✅ Download data access layer already initialized")
+            logging.info("🔧 Initializing download data access layer...")
+            self.data_access.ensure_database_ready()
+            logging.info("✅ Download data access layer ready")
         except Exception as e:
             logging.error(f"❌ Failed to initialize download data access layer: {e}")
             # Fallback to in-memory storage or raise error based on configuration
             raise
 ```
 
-##### Lazy Initialization
-The system supports lazy initialization for scenarios where immediate database setup isn't required:
+```
+
+##### Caller Responsibility for Database Initialization
+The data access and downloader layers assume the database is fully initialized. The caller (typically `dl.py` at startup) is responsible for ensuring database readiness:
+
+```python
+# In dl.py startup
+def initialize_download_system():
+    """Initialize the download system at application startup."""
+    try:
+        # Create data access instance
+        data_access = DownloadDataAccess()
+        
+        # Ensure database is ready (this will recreate if corrupted)
+        data_access.ensure_database_ready()
+        
+        # Create download manager with initialized data access
+        download_manager = DownloadManager(data_access)
+        
+        logging.info("✅ Download system initialized successfully")
+        return download_manager
+        
+    except Exception as e:
+        logging.error(f"❌ Failed to initialize download system: {e}")
+        raise
+
+# Usage in main application
+if __name__ == "__main__":
+    try:
+        download_manager = initialize_download_system()
+        # Application continues with fully initialized database
+    except Exception as e:
+        logging.error(f"❌ Application startup failed: {e}")
+        sys.exit(1)
+```
+
+##### Data Access Layer Initialization Contract
+The data access layer provides a clear contract for initialization:
 
 ```python
 class DownloadDataAccess:
-    def ensure_initialized(self):
-        """Ensure database is initialized before operations."""
-        if not self._initialized:
-            self.initialize()
+    def __init__(self, db_path: str = "./data/dtube_downloads"):
+        """Initialize data access layer. Database is NOT initialized until ensure_database_ready() is called."""
+        self.db_path = db_path
+        self.db = None
+        self.collections = {}
+        self._initialized = False
+        self._lock = threading.Lock()
     
-    def create_download(self, download_data: Dict[str, Any]) -> str:
-        """Create a new download record with lazy initialization."""
-        self.ensure_initialized()
-        # ... implementation
+    def ensure_database_ready(self):
+        """Ensure database is ready for operations. This method:
+        - Checks if existing database is valid
+        - Recreates database if corrupted or missing
+        - Creates all required collections and indexes
+        - Sets _initialized flag to True
+        
+        This method is idempotent and thread-safe.
+        """
+        # ... implementation as shown above
+    
+    def is_initialized(self) -> bool:
+        """Check if database is ready for operations."""
+        return self._initialized
+    
+
+```
+
+##### Database Integrity Validation
+The system includes comprehensive database integrity checking:
+
+```python
+class DownloadDataAccess:
+    def validate_database_integrity(self) -> Dict[str, Any]:
+        """Validate database integrity and report issues."""
+        validation_result = {
+            'is_valid': True,
+            'issues': [],
+            'collections_status': {},
+            'indexes_status': {}
+        }
+        
+        try:
+            if not self._initialized:
+                validation_result['is_valid'] = False
+                validation_result['issues'].append("Database not initialized")
+                return validation_result
+            
+            # Check collections
+            required_collections = ['downloads', 'download_history', 'download_events', 'download_queue']
+            for collection_name in required_collections:
+                try:
+                    collection = self.collections[collection_name]
+                    # Test basic operations
+                    collection.find_one()
+                    validation_result['collections_status'][collection_name] = 'OK'
+                except Exception as e:
+                    validation_result['collections_status'][collection_name] = f'ERROR: {e}'
+                    validation_result['issues'].append(f"Collection {collection_name}: {e}")
+                    validation_result['is_valid'] = False
+            
+            # Check indexes
+            try:
+                # Verify key indexes exist and are functional
+                downloads_coll = self.collections['downloads']
+                downloads_coll.find_one({"video_id": "test_index_check"})
+                validation_result['indexes_status']['downloads'] = 'OK'
+            except Exception as e:
+                validation_result['indexes_status']['downloads'] = f'ERROR: {e}'
+                validation_result['issues'].append(f"Downloads indexes: {e}")
+                validation_result['is_valid'] = False
+                
+        except Exception as e:
+            validation_result['is_valid'] = False
+            validation_result['issues'].append(f"Validation error: {e}")
+        
+        return validation_result
 ```
 
 #### Migration Strategy
@@ -422,15 +623,11 @@ class DownloadDataAccess:
 
 ##### Phase 3: Enhanced Features
 1. Implement queue management system via data access layer
-2. Add analytics and reporting capabilities
-3. Implement retry logic and scheduling
-4. Add database maintenance and cleanup functions
 
 ##### Phase 4: Testing and Validation
 1. Comprehensive testing of data access layer
 2. Integration testing with DownloadManager
 3. Performance testing and optimization
-4. Migration testing from in-memory to persistent storage
 
 #### Benefits of Layered Architecture
 
@@ -454,17 +651,35 @@ class DownloadDataAccess:
 - Optimized query patterns and indexing
 - Efficient data access patterns
 
+#### Benefits of Persistent Database Approach
+
+##### Data Persistence
+- **Session Continuity**: Downloads and history persist across application restarts
+- **User Experience**: Users don't lose download progress or history between sessions
+- **Reliability**: Robust data storage with automatic recovery from corruption
+
+##### Automatic Recovery
+- **Self-Healing**: Database automatically recreates itself if corrupted
+- **Zero Manual Intervention**: No need for users to manually fix database issues
+- **Graceful Degradation**: Application continues to work even after database corruption
+
+##### Clear Initialization Contract
+- **Explicit Responsibility**: Clear separation between initialization and usage
+- **Fail-Fast Behavior**: Operations fail immediately if database isn't ready
+- **Predictable Behavior**: Consistent initialization state across all operations
+
 #### Configuration Options
 
 ##### Data Access Layer Settings
 ```python
 DATA_ACCESS_CONFIG = {
     "db_path": "./data/dtube_downloads",
-    "auto_initialize": True,
-    "lazy_initialization": False,
+    "auto_initialize": False,  # Changed: Caller must explicitly initialize
+    "lazy_initialization": True,  # Changed: Supports lazy initialization
     "connection_timeout": 30,
     "max_retries": 3,
-    "backup_on_startup": False
+    "auto_recovery": True,  # New: Enable automatic database recovery
+    "validate_on_startup": True  # New: Validate database integrity at startup
 }
 ```
 
@@ -476,46 +691,20 @@ DOWNLOAD_DB_CONFIG = {
     "read_preference": "primary",
     "index_creation": "startup",  # startup|lazy|manual
     "auto_cleanup": True,
-    "cleanup_interval_days": 30
+    "cleanup_interval_days": 30,
+    "persistence_mode": "file_based",  # New: File-based persistence
+    "backup_on_startup": False,  # New: Optional backup before operations
+    "integrity_check_interval": "startup"  # New: When to run integrity checks
 }
 ```
 
-#### Error Handling and Recovery
-
-##### Data Access Layer Failures
-- Automatic retry with exponential backoff
-- Fallback to in-memory storage during outages
-- Graceful degradation of functionality
-- Comprehensive error logging and reporting
-
-##### Database Connection Issues
-- Connection pooling and health checks
-- Automatic reconnection with backoff
-- Circuit breaker pattern for repeated failures
-- Health status monitoring and alerts
-
-##### Data Integrity
-- Transaction support for critical operations
-- Automatic backup before major changes
-- Data validation and constraint checking
-- Recovery mechanisms for corrupted records
-
-#### Future Enhancements
-
-##### Advanced Data Access Features
-- Query optimization and caching
-- Bulk operations for batch processing
-- Real-time change notifications
-- Advanced aggregation pipelines
-
-##### Monitoring and Observability
-- Performance metrics and query analysis
-- Database health monitoring
-- Automated performance tuning
-- Integration with monitoring systems
-
-##### Scalability Features
-- Sharding and partitioning strategies
-- Read replicas for high availability
-- Horizontal scaling capabilities
-- Multi-region deployment support
+##### Initialization Configuration
+```python
+INITIALIZATION_CONFIG = {
+    "startup_initialization": True,  # Initialize at dl.py startup
+    "fail_fast": True,  # Fail immediately if database can't be initialized
+    "recovery_attempts": 3,  # Number of recovery attempts
+    "fallback_to_memory": False,  # Don't fall back to in-memory storage
+    "log_initialization": True  # Log all initialization steps
+}
+```

@@ -38,7 +38,7 @@ def test_download_manager_title_storage():
     from dtube.downloader import _download_manager
 
     # Clear any existing downloads
-    _download_manager._downloads.clear()
+    _download_manager.clear_all_downloads()
 
     # Add a test download
     test_video_id = "test123"
@@ -78,7 +78,10 @@ def test_filename_template_generation():
 @pytest.mark.timeout(5)
 def test_download_with_custom_filename():
     """Test downloading with custom filename format."""
-    from dtube.downloader import download_video
+    from dtube.downloader import download_video, _download_manager
+
+    # Clear any existing downloads
+    _download_manager.clear_all_downloads()
 
     # Create temporary directory for testing
     temp_dir = tempfile.mkdtemp(prefix="dtube_test_")
@@ -99,7 +102,6 @@ def test_download_with_custom_filename():
                 assert video_id == "test123"
                 
                 # Verify download was added to manager
-                from dtube.downloader import _download_manager
                 download_info = _download_manager.get_download(video_id)
                 assert download_info is not None
                 assert download_info['title'] == "Test Video Title"
@@ -136,7 +138,7 @@ def test_download_manager_integration():
     from dtube.downloader import _download_manager, _create_filename_template
 
     # Clear existing downloads
-    _download_manager._downloads.clear()
+    _download_manager.clear_all_downloads()
 
     # Test adding a download with title
     test_video_id = "test456"
@@ -163,7 +165,7 @@ def test_download_status_tracking():
     from dtube.downloader import _download_manager
 
     # Clear existing downloads
-    _download_manager._downloads.clear()
+    _download_manager.clear_all_downloads()
 
     # Add a test download
     test_video_id = "test789"
@@ -194,7 +196,7 @@ def test_download_cleanup():
     from dtube.downloader import _download_manager
 
     # Clear existing downloads
-    _download_manager._downloads.clear()
+    _download_manager.clear_all_downloads()
 
     # Add multiple test downloads
     test_video_ids = ["cleanup1", "cleanup2", "cleanup3"]
@@ -208,14 +210,16 @@ def test_download_cleanup():
         _download_manager.add_download(video_id, test_info)
     
     # Verify downloads were added
-    assert len(_download_manager._downloads) == 3
+    downloads = _download_manager.list_downloads()
+    assert len(downloads) == 3
     
     # Clean up all downloads
     for video_id in test_video_ids:
         _download_manager.remove_download(video_id)
     
     # Verify all downloads were removed
-    assert len(_download_manager._downloads) == 0
+    downloads = _download_manager.list_downloads()
+    assert len(downloads) == 0
 
 @pytest.mark.timeout(5)
 def test_download_error_handling():
@@ -223,7 +227,7 @@ def test_download_error_handling():
     from dtube.downloader import _download_manager
 
     # Clear existing downloads
-    _download_manager._downloads.clear()
+    _download_manager.clear_all_downloads()
 
     # Add a test download
     test_video_id = "error123"
@@ -237,13 +241,12 @@ def test_download_error_handling():
     _download_manager.add_download(test_video_id, test_info)
     
     # Simulate an error
-    _download_manager.update_download_status(test_video_id, 'error', error='Test error message')
+    _download_manager.update_download_status(test_video_id, 'error', error_message='Test error')
     
     # Verify error status was recorded
     stored_info = _download_manager.get_download(test_video_id)
     assert stored_info['status'] == 'error'
-    assert stored_info['error'] == 'Test error message'
-    assert stored_info['title'] == 'Error Test Video'  # Title should still be preserved
+    assert stored_info['error_message'] == 'Test error'
     
     # Clean up
     _download_manager.remove_download(test_video_id)

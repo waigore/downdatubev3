@@ -5,6 +5,7 @@ name = "pypi"
 
 [packages]
 yt-dlp = {extras = ["default"], version = "*"}
+mongita = "*"
 
 [dev-packages]
 pytest = "*"

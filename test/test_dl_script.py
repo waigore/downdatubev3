@@ -97,7 +97,8 @@ def test_command_line_argument_parsing():
                 mock_driver_class.assert_called_once_with(
                     max_concurrent=5,
                     output_path='downloads',
-                    quality='720p'
+                    quality='720p',
+                    download_manager=mock_driver_class.call_args[1]['download_manager']
                 )
 
 @pytest.mark.timeout(5)
@@ -171,7 +172,8 @@ def test_quality_settings():
                 mock_driver_class.assert_called_once_with(
                     max_concurrent=3,
                     output_path='downloads',
-                    quality='720p'
+                    quality='720p',
+                    download_manager=mock_driver_class.call_args[1]['download_manager']
                 )
 
 @pytest.mark.timeout(5)
@@ -192,7 +194,8 @@ def test_concurrent_download_settings():
                 mock_driver_class.assert_called_once_with(
                     max_concurrent=5,
                     output_path='downloads',
-                    quality='best'
+                    quality='best',
+                    download_manager=mock_driver_class.call_args[1]['download_manager']
                 )
 
 @pytest.mark.timeout(5)
